@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cesium Viewer Example</title>
+    <!-- Include CesiumJS from the Cesium CDN -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+      html,
+      body,
+      #cesiumContainer {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      /* Style for the layer control panel */
+      #layerControl {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(42, 42, 42, 0.8);
+        padding: 10px;
+        color: white;
+        font-family: sans-serif;
+        border-radius: 4px;
+      }
+      #layerControl label {
+        display: block;
+        margin-bottom: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cesiumContainer"></div>
+    <!-- The panel for toggling layers will be added by the script -->
+    <script>
+      // Set your Cesium Ion access token.
+      Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+
+      // Initialize the Cesium Viewer.
+      var viewer = new Cesium.Viewer('cesiumContainer', {
+        terrain: Cesium.Terrain.fromWorldTerrain({
+          requestVertexNormals: true
+        })
+      });
+
+      // Add an imagery provider.
+      var osm = new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://tile.openstreetmap.org'
+      });
+      viewer.imageryLayers.addImageryProvider(osm);
+      viewer.scene.globe.enableLighting = true;
+
+      // Load three CZML files:
+      // 1. The RM toucans file (always visible)
+      // 2. The glotec file (toggleable)
+      // 3. The FOF2 glotec file (toggleable)
+      var rmCzmlUrl = "http://127.0.0.1:8001/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++-122.45016352519423+as+tx_lng%2C%0D%0A++37.72509919160523+as+tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++301+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++dB+%3E+100%0D%0A++and+timestamp+%3E+%272025-02-10%27%0D%0A++and+timestamp+%3C+%272025-02-11%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A";
+      var glotecCzmlUrl = "http://127.0.0.1:8001/glotec.iczml?sql=select%0D%0A++uid+as+Spotter%2C%0D%0A++timestamp%2C%0D%0A++longitude+as+tx_lng%2C%0D%0A++latitude+as+tx_lat%2C%0D%0A++hmF2+as+dB%2C%0D%0A++hmF2*1000+as+elev_tx%2C%0D%0A++hmF2+as+edmaxalt%2C%0D%0A++NmF2%0D%0Afrom%0D%0A++glotec%0D%0Awhere%0D%0A++%22tx_lat%22+%3E+15%0D%0A++and+%22tx_lat%22+%3C+52%0D%0A++and+%22tx_lng%22+%3E+-130%0D%0A++and+%22tx_lng%22+%3C+-60%0D%0A++and+%22timestamp%22+%3E+%272025-02-10T00%3A25%3A00%27%0D%0A++and+%22timestamp%22+%3C+%272025-02-10T01%3A55%3A00%27%0D%0Aorder+by%0D%0A++elev_tx+asc";
+      // The third (new) CZML file (FOF2 glotec map) is assumed to be served at the following URL.
+      var fof2CzmlUrl = "http://127.0.0.1:8001/glotec.iczml?sql=select%0D%0A++uid+as+Spotter%2C%0D%0A++timestamp%2C%0D%0A++longitude+as+tx_lng%2C%0D%0A++latitude+as+tx_lat%2C%0D%0A++%28sqrt%28NmF2%2F.0124%29%29%2F1000+as+fof2%2C%0D%0A++%28sqrt%28NmF2%2F.0124%29%29%2F1000+as+dB%2C%0D%0A++%28%28sqrt%28NmF2%2F.0124%29%29%2F1000%29*10+as+elev_tx%2C%0D%0A++%28sqrt%28NmF2%2F.0124%29%29%2F1000+as+edmaxalt%2C%0D%0A++NmF2%0D%0Afrom%0D%0A++glotec%0D%0Awhere%0D%0A++%22tx_lat%22+%3E+15%0D%0A++and+%22tx_lat%22+%3C+52%0D%0A++and+%22tx_lng%22+%3E+-130%0D%0A++and+%22tx_lng%22+%3C+-60%0D%0A++and+%22timestamp%22+%3E+%272025-02-10T00%3A25%3A00%27%0D%0A++and+%22timestamp%22+%3C+%272025-02-10T01%3A55%3A00%27%0D%0Aorder+by%0D%0A++fof2+asc%0D%0A&25=&00=&55=";
+
+      // Load all three data sources and store references.
+      var rmPromise = Cesium.CzmlDataSource.load(rmCzmlUrl);
+      var glotecPromise = Cesium.CzmlDataSource.load(glotecCzmlUrl);
+      var fof2Promise = Cesium.CzmlDataSource.load(fof2CzmlUrl);
+
+      Promise.all([rmPromise, glotecPromise, fof2Promise]).then(function(dataSources) {
+        var rmDataSource = dataSources[0];
+        var glotecDataSource = dataSources[1];
+        var fof2DataSource = dataSources[2];
+
+        viewer.dataSources.add(rmDataSource);
+        viewer.dataSources.add(glotecDataSource);
+        viewer.dataSources.add(fof2DataSource);
+
+        // Create a layer control panel with two checkboxes.
+        var panel = document.createElement("div");
+        panel.id = "layerControl";
+        panel.innerHTML = 
+          '<label><input id="toggleGlotec" type="checkbox" checked> Glotec Map</label>' +
+          '<label><input id="toggleFof2" type="checkbox" checked> FOF2 Glotec Map</label>';
+        document.body.appendChild(panel);
+
+        // Add event listeners for the checkboxes.
+        document.getElementById("toggleGlotec").addEventListener("change", function(e) {
+          glotecDataSource.show = e.target.checked;
+        });
+        document.getElementById("toggleFof2").addEventListener("change", function(e) {
+          fof2DataSource.show = e.target.checked;
+        });
+
+      }).otherwise(function(error) {
+        console.error("Error loading one or more CZML data sources: ", error);
+      });
+
+      // The rest of your code (if any) can continue here...
+    </script>
+  </body>
+</html>

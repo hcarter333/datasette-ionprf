@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Include the CesiumJS JavaScript and CSS files -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+    }
+    .container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    label {
+        display: block;
+        margin-bottom: 5px;
+    }
+    input {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+    }
+    button {
+        padding: 10px 15px;
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    button:hover {
+        background-color: #0056b3;
+    }
+</style>
+<script>
+  let start_time = '';
+  let end_time = '';
+  let elev = '';
+  let viewer = null;
+
+  function processForm() {
+      // Retrieve values from the input fields
+      const startTime = document.getElementById('start-time').value;
+      const endTime = document.getElementById('end-time').value;
+      const elevation = document.getElementById('elevation').value;
+      
+      // URL-encode the values
+      start_time = encodeURIComponent(startTime);
+      end_time = encodeURIComponent(endTime);
+      elev = encodeURIComponent(elevation);
+      
+      // Display the encoded values (for demonstration)
+      document.getElementById('result').innerText = `Encoded values:
+          Start Time: ${start_time}
+          End Time: ${end_time}
+          Elevation: ${elev}`;
+      
+      // Here you could use the variables start_time, end_time, and elev as needed
+
+      var qso_url_start = "http://127.0.0.1:8001/rm_toucans.czml?sql=+++++++++select%0D%0A++++++++++++rm_rnb_history_pres.tx_lng+as+longitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.tx_lat+as+latitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lng+as+longitude%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lat+as+latitude%2C%0D%0A++++++++++++rx_lat%2C+rx_lng%2C+tx_lat%2C+tx_lng%2C%0D%0A++++++++++++rm_rnb_history_pres.timestamp%2C%0D%0A++++++++++++rm_rnb_history_pres.dB%2C%0D%0A++++++++++++rm_rnb_history_pres.Spotter%2C%0D%0A++++++++++++rm_rnb_history_pres.QSL_link%2C%0D%0A++++++++++++434+as+f2m%2C%0D%0A++++++++++++";
+//var eleveation = 2377.92;
+var elev_to_start = "+as+elev_tx%2C%0D%0A++++++++++++photo_path.path%2C%0D%0A++++++++++++photo_path.uuid%2C%0D%0A++++++++++++json_object%28%0D%0A++++++++++++++%27image%27%2C%0D%0A++++++++++++++%27%2F-%2Fmedia%2Fthumbnail%2F%27+%7C%7C+uuid%2C%0D%0A++++++++++++++%27title%27%2C%0D%0A++++++++++++++Spotter+%7C%7C+%27+de+KD0FNR%27%2C%0D%0A++++++++++++++%27description%27%2C%0D%0A++++++++++++++%27rx_rst%3A+%27+%7C%7C+dB+%7C%7C+%27++timestamp%3A+%27+%7C%7C+rm_rnb_history_pres.timestamp%0D%0A++++++++++++%29+as+popup%0D%0A++++++++++from%0D%0A++++++++++++rm_rnb_history_pres%0D%0A++++++++++++LEFT+JOIN+photo_path+ON+rm_rnb_history_pres.QSL_link+%3D+photo_path.uuid%0D%0A++++++++++where%0D%0A+++++++++++%0D%0A++++++++++++rm_rnb_history_pres.timestamp+%3E+%27";
+//var starttime = 2024-06-06
+var start_to_end = "%27%0D%0A++++++++++++and+rm_rnb_history_pres.timestamp+%3C+%27";
+//var endtime = 2024-06-07
+var end_to_end = "%27%0D%0A++++++++++++and+Intersects%28%0D%0A++++++++++++++GeomFromGeoJSON%28%3Afreedraw%29%2C%0D%0A++++++++++++++MakePoint%28%0D%0A++++++++++++++++cast%28longitude_t+as+float%29%2C%0D%0A++++++++++++++++cast%28latitude_t+as+float%29%0D%0A++++++++++++++%29%0D%0A++++++++++++%29+%3D+1%0D%0A++++++++++order+by%0D%0A++++++++++++rm_rnb_history_pres.timestamp+desc&freedraw=%7B%22type%22%3A%22MultiPolygon%22%2C%22coordinates%22%3A%5B%5B%5B%5B-103.97461%2C40.24599%5D%2C%5B-103.44727%2C39.90974%5D%2C%5B-103.18359%2C39.57182%5D%2C%5B-102.87598%2C38.37612%5D%2C%5B-102.87598%2C37.19533%5D%2C%5B-103.00781%2C36.66842%5D%2C%5B-103.84277%2C35.67515%5D%2C%5B-104.98535%2C34.77772%5D%2C%5B-105.82031%2C34.37971%5D%2C%5B-107.27051%2C33.97981%5D%2C%5B-108.50098%2C34.01624%5D%2C%5B-109.86328%2C34.41597%5D%2C%5B-110.61035%2C34.88593%5D%2C%5B-111.18164%2C35.42487%5D%2C%5B-111.92871%2C36.49197%5D%2C%5B-112.14844%2C37.23033%5D%2C%5B-112.06055%2C38.03079%5D%2C%5B-111.48926%2C38.54817%5D%2C%5B-110.30273%2C39.3343%5D%2C%5B-108.3252%2C40.27953%5D%2C%5B-107.09473%2C40.6473%5D%2C%5B-105.5127%2C40.68064%5D%2C%5B-103.97461%2C40.24599%5D%5D%5D%5D%7D";
+console.log("this is a test")
+var qso_url = qso_url_start + "2377.92" + elev_to_start + start_time + start_to_end + end_time + end_to_end;
+console.log(qso_url);
+viewer.dataSources.removeAll();
+viewer.dataSources.add(Cesium.CzmlDataSource.load(qso_url_start + elev + elev_to_start + start_time + start_to_end + end_time + end_to_end));
+
+  }
+</script>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <script>
+    // Your access token can be found at: https://ion.cesium.com/tokens.
+    // Replace `your_access_token` with your Cesium ion access token.
+window.addEventListener('DOMContentLoaded', function() {
+  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+
+// Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    terrain: Cesium.Terrain.fromWorldTerrain({
+              //requestWaterMask: true,
+              requestVertexNormals: true,
+            }),
+    });   
+
+
+var osm = new Cesium.OpenStreetMapImageryProvider({
+        url : 'https://tile.openstreetmap.org'
+      });
+
+viewer.imageryLayers.addImageryProvider(osm)
+
+// set lighting to true
+    viewer.scene.globe.enableLighting = true;
+//    primitives.higherResolutionGrid.forEach(function (line) {
+//      line.show = true;
+//    });
+
+
+// Fly the camera to San Francisco at the given longitude, latitude, and height.
+
+viewer.dataSources.add(Cesium.CzmlDataSource.load("http://127.0.0.1:8001/rm_toucans.czml?sql=+++++++++select%0D%0A++++++++++++rm_rnb_history_pres.tx_lng+as+longitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.tx_lat+as+latitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lng+as+longitude%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lat+as+latitude%2C%0D%0A++++++++++++rx_lat%2C+rx_lng%2C+tx_lat%2C+tx_lng%2C%0D%0A++++++++++++rm_rnb_history_pres.timestamp%2C%0D%0A++++++++++++rm_rnb_history_pres.dB%2C%0D%0A++++++++++++rm_rnb_history_pres.Spotter%2C%0D%0A++++++++++++rm_rnb_history_pres.QSL_link%2C%0D%0A++++++++++++434+as+f2m%2C%0D%0A++++++++++++2377.92+as+elev_tx%2C%0D%0A++++++++++++photo_path.path%2C%0D%0A++++++++++++photo_path.uuid%2C%0D%0A++++++++++++json_object%28%0D%0A++++++++++++++%27image%27%2C%0D%0A++++++++++++++%27%2F-%2Fmedia%2Fthumbnail%2F%27+%7C%7C+uuid%2C%0D%0A++++++++++++++%27title%27%2C%0D%0A++++++++++++++Spotter+%7C%7C+%27+de+KD0FNR%27%2C%0D%0A++++++++++++++%27description%27%2C%0D%0A++++++++++++++%27rx_rst%3A+%27+%7C%7C+dB+%7C%7C+%27++timestamp%3A+%27+%7C%7C+rm_rnb_history_pres.timestamp%0D%0A++++++++++++%29+as+popup%0D%0A++++++++++from%0D%0A++++++++++++rm_rnb_history_pres%0D%0A++++++++++++LEFT+JOIN+photo_path+ON+rm_rnb_history_pres.QSL_link+%3D+photo_path.uuid%0D%0A++++++++++where%0D%0A+++++++++++%0D%0A++++++++++++rm_rnb_history_pres.timestamp+%3E+%272024-06-06%27%0D%0A++++++++++++and+rm_rnb_history_pres.timestamp+%3C+%272024-06-07%27%0D%0A++++++++++++and+Intersects%28%0D%0A++++++++++++++GeomFromGeoJSON%28%3Afreedraw%29%2C%0D%0A++++++++++++++MakePoint%28%0D%0A++++++++++++++++cast%28longitude_t+as+float%29%2C%0D%0A++++++++++++++++cast%28latitude_t+as+float%29%0D%0A++++++++++++++%29%0D%0A++++++++++++%29+%3D+1%0D%0A++++++++++order+by%0D%0A++++++++++++rm_rnb_history_pres.timestamp+desc&freedraw=%7B%22type%22%3A%22MultiPolygon%22%2C%22coordinates%22%3A%5B%5B%5B%5B-103.97461%2C40.24599%5D%2C%5B-103.44727%2C39.90974%5D%2C%5B-103.18359%2C39.57182%5D%2C%5B-102.87598%2C38.37612%5D%2C%5B-102.87598%2C37.19533%5D%2C%5B-103.00781%2C36.66842%5D%2C%5B-103.84277%2C35.67515%5D%2C%5B-104.98535%2C34.77772%5D%2C%5B-105.82031%2C34.37971%5D%2C%5B-107.27051%2C33.97981%5D%2C%5B-108.50098%2C34.01624%5D%2C%5B-109.86328%2C34.41597%5D%2C%5B-110.61035%2C34.88593%5D%2C%5B-111.18164%2C35.42487%5D%2C%5B-111.92871%2C36.49197%5D%2C%5B-112.14844%2C37.23033%5D%2C%5B-112.06055%2C38.03079%5D%2C%5B-111.48926%2C38.54817%5D%2C%5B-110.30273%2C39.3343%5D%2C%5B-108.3252%2C40.27953%5D%2C%5B-107.09473%2C40.6473%5D%2C%5B-105.5127%2C40.68064%5D%2C%5B-103.97461%2C40.24599%5D%5D%5D%5D%7D"));
+viewer.dataSources.add(Cesium.CzmlDataSource.load("http://127.0.0.1:8001/j_c.iczml?sql=select+rowid+as+Spotter%2C+%0D%0Attj+as+timestamp%2C+%0D%0Alatitude+as+tx_lat%2C%0D%0Alongitude+as+tx_lng%2C%0D%0Alatitude+as+latitude%2C%0D%0Alongitude+as+longitude%2C%0D%0Alatitude+as+rx_lat%2C%0D%0Alongitude+as+rx_lng%2C%0D%0Aedmaxalt*1000+as+elev_tx%2C%0D%0Aedmaxalt+as+edmaxalt%2C%0D%0Acritfreq+as+dB%0D%0Afrom+j_c%0D%0Awhere+ttj+%3E+%272024-06-06T02%3A12%3A00%27%0D%0Aand+ttj+%3C+%272024-06-06T03%3A07%3A00%27%0D%0Aorder+by+ttj"));
+//viewer.dataSources.add(Cesium.CzmlDataSource.load("https://spireandpath-229571091916.us-central1.run.app/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++335+as+f2m%2C%0D%0A+2387.92+as+elev_tx%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++rm_rnb_history_pres.timestamp+%3E+%272024-06-06%27%0D%0A++and+rm_rnb_history_pres.timestamp+%3C+%272024-06-07%27%0D%0A++and+dB+%3E+100%0D%0Aorder+by%0D%0A++rowid%0D%0Alimit%0D%0A++12"));
+//viewer.dataSources.add(Cesium.CzmlDataSource.load("https://spireandpath-229571091916.us-central1.run.app/j_c.iczml?sql=select+rowid+as+Spotter%2C+%0D%0Attj+as+timestamp%2C+%0D%0Alatitude+as+tx_lat%2C%0D%0Alongitude+as+tx_lng%2C%0D%0Alatitude+as+latitude%2C%0D%0Alongitude+as+longitude%2C%0D%0Alatitude+as+rx_lat%2C%0D%0Alongitude+as+rx_lng%2C%0D%0Aedmaxalt*1000+as+elev_tx%2C%0D%0Aedmaxalt+as+edmaxalt%2C%0D%0Acritfreq+as+dB%0D%0Afrom+j_c%0D%0Awhere+ttj+%3E+%272024-06-06T02%3A12%3A00%27%0D%0Aand+ttj+%3C+%272024-06-06T03%3A07%3A00%27%0D%0Aorder+by+ttj"));
+});
+  </script>
+ </div>
+
+ <div class="container">
+  <h1>Data Input Form</h1>
+  
+  <div class="form-group">
+      <label for="start-time">Start Time:</label>
+      <input type="text" id="start-time" placeholder="Enter start time">
+  </div>
+  
+  <div class="form-group">
+      <label for="end-time">End Time:</label>
+      <input type="text" id="end-time" placeholder="Enter end time">
+  </div>
+  
+  <div class="form-group">
+      <label for="elevation">Elevation:</label>
+      <input type="text" id="elevation" placeholder="Enter elevation">
+  </div>
+  
+  <button onclick="processForm()">Map</button>
+  
+  <div id="result">
+      <!-- Processed values will appear here -->
+  </div>
+</div>
+
+
+
+
+</body>
+</html>
+
+
+
+
+

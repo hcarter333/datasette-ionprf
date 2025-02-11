@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cesium Viewer Example</title>
+    <!-- Include CesiumJS from the Cesium CDN -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+      html,
+      body,
+      #cesiumContainer {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="cesiumContainer"></div>
+    <script>
+      // Define your Cesium ion access token here
+      //const cesiumIonSecret = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+      //Cesium.Ion.defaultAccessToken = cesiumIonSecret;
+
+      // Initialize the Cesium Viewer
+//const viewer = new Cesium.Viewer("cesiumContainer", {
+        // You can add viewer options here if needed.
+        //timeline: true,
+        //animation: true,
+//      });
+//const viewer = new Cesium.Viewer("cesiumContainer", { terrain: Cesium.Terrain.fromWorldTerrain(), });
+//var osm = new Cesium.OpenStreetMapImageryProvider({ url : 'https://tile.openstreetmap.org' }); 
+//viewer.imageryLayers.addImageryProvider(osm); 
+//viewer.scene.globe.enableLighting = true;
+
+      // Create a CZML data source and add it to the viewer.
+      //const czmlDataSource = new Cesium.CzmlDataSource();
+      //viewer.dataSources.add("file:///media/fuse/crostini_7c8f0936bb7e698e8f408a132333cb8988f8c5c1_termina_penguin/rm-rbn-history/maps/2025_01_11_US_9757_Butterfield_MOMA.czml");
+//const dataSourcePromise = Cesium.CzmlDataSource.load("https://raw.githubusercontent.com/hcarter333/rm-rbn-history/refs/heads/main/maps/glotec1.czml"); 
+//viewer.dataSources.add(dataSourcePromise);
+
+
+
+window.addEventListener('DOMContentLoaded', function() {
+  Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+
+// Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    terrain: Cesium.Terrain.fromWorldTerrain({
+              //requestWaterMask: true,
+              requestVertexNormals: true,
+            }),
+    });   
+
+
+var osm = new Cesium.OpenStreetMapImageryProvider({
+        url : 'https://tile.openstreetmap.org'
+      });
+
+viewer.imageryLayers.addImageryProvider(osm);
+
+// set lighting to true
+    viewer.scene.globe.enableLighting = true;
+//    primitives.higherResolutionGrid.forEach(function (line) {
+//      line.show = true;
+//    });
+
+
+// Fly the camera to San Francisco at the given longitude, latitude, and height.
+
+viewer.dataSources.add(Cesium.CzmlDataSource.load("http://127.0.0.1:8001/glotec.iczml?sql=select%0D%0A++uid+as+Spotter%2C%0D%0A++timestamp%2C%0D%0A++longitude+as+tx_lng%2C%0D%0A++latitude+as+tx_lat%2C%0D%0A++hmF2+as+dB%2C%0D%0A++hmF2*1000+as+elev_tx%2C%0D%0A++hmF2+as+edmaxalt%0D%0Afrom%0D%0A++glotec%0D%0Awhere%0D%0A++%22tx_lat%22+%3E+%3Ap0%0D%0A++and+%22tx_lat%22+%3C+%3Ap1%0D%0A++and+%22tx_lng%22+%3E+%3Ap2%0D%0A++and+%22tx_lng%22+%3C+%3Ap3%0D%0A++and+%22timestamp%22+%3E+%3Ap4%0D%0A++and+%22timestamp%22+%3C+%3Ap5%0D%0Aorder+by%0D%0A++elev_tx+DEsc&p0=23&p1=51&p2=-130&p3=-60&p4=2025-01-21&p5=2025-01-21T02%3A30%3A00"));
+});
+
+      // Load the local CZML file.
+      //czmlDataSource
+      //  .load("./2025_01_11_US_9757_Butterfield_MOMA.czml")
+      //  .then(function () {
+          // Zoom to the data once it is loaded.
+      //    viewer.zoomTo(czmlDataSource);
+      //  })
+      //  .otherwise(function (error) {
+      //    console.error("Error loading CZML file:", error);
+      //  });
+    </script>
+  </body>
+</html>
