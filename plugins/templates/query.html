@@ -1,0 +1,99 @@
+
+
+
+{% extends "default:query.html" %}
+
+{% block content %}
+<meta charset="utf-8">
+<!-- Include the CesiumJS JavaScript and CSS files -->
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.117/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+<h1>EXTRA HTML AT THE TOP OF THE CONTENT BLOCK</h1>
+<p>This line renders the original block: this will implement cesium</p>
+<div id="scratchpad">Scratchpad for charts</div>
+{{ super() }}
+<div id="cesiumContainer"></div>
+<script type="module">
+    console.debug("Adding datasette_init listener")
+    //datasette_init is not arriving as expected
+    //Can't use click without ensuring that teh thing clicked was the 
+    //czml link
+    document.addEventListener('click', function (evt) {
+        //const manager = evt.detail;
+        var tre = evt.target.href || '';
+        console.debug("link clicked is " + evt.target.text + " the end of link ")
+        console.debug("reference clicked is " + tre + "end of ref")
+        //console.debug("Datasette version:", manager.VERSION);
+
+        //Find the czml link and reload the map if necessary
+        //var links = document.getElementsByTagName("a");
+
+        var anchor, ref;
+        //for (var element of links) {
+        //    console.debug("link text is " + element.text + " the end ")
+            if (evt.target.text == 'czml' || evt.target.text == 'iczml') {
+                //anchor = element;
+                //ref = element.getAttribute('href');
+                //update the source for Cesium
+                //viewer.entities.removeAll();
+                //viewer.destroy();
+                //const viewer = new Cesium.Viewer('cesiumContainer', {
+                //    terrain: Cesium.Terrain.fromWorldTerrain(),
+                //});
+                viewer.dataSources.add(Cesium.CzmlDataSource.load(tre));
+                console.debug("should have loaded " + tre)
+            }
+        //}
+
+        console.debug(anchor);
+        console.debug(ref);
+    });
+
+    // Your access token can be found at: https://ion.cesium.com/tokens.
+    // This is the default access token from your ion account
+    console.debug("opening the viewer")
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrain: Cesium.Terrain.fromWorldTerrain({
+                //requestWaterMask: true,
+                requestVertexNormals: true,
+              }),
+      });   
+
+
+    var osm = new Cesium.OpenStreetMapImageryProvider({
+            url : 'https://tile.openstreetmap.org'
+    });
+
+    viewer.imageryLayers.addImageryProvider(osm);
+
+// set lighting to true
+    viewer.scene.globe.enableLighting = true;
+//    primitives.higherResolutionGrid.forEach(function (line) {
+//      line.show = true;
+//    });
+
+
+    // adjust time so scene is lit by sun
+    viewer.clock.currentTime = Cesium.JulianDate.fromIso8601(
+        "2023-09-17T14:36:00"
+    );
+    // Fly the camera to San Francisco at the given longitude, latitude, and height.
+    //viewer.camera.flyTo({
+    //    destination: Cesium.Cartesian3.fromDegrees(-122.4175, 37.655, 400),
+    //    orientation: {
+    //        heading: Cesium.Math.toRadians(0.0),
+    //        pitch: Cesium.Math.toRadians(-15.0),
+    //    }
+    //});
+
+    // Add Cesium OSM Buildings, a global 3D buildings layer.
+    //const buildingTileset = await Cesium.createOsmBuildingsAsync();
+    //viewer.scene.primitives.add(buildingTileset);
+</script>
+ </div>
+
+
+{% endblock %}
