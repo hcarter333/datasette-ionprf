@@ -1,0 +1,8 @@
+﻿{% extends "default:row.html" %}
+
+{% block content %}
+<h1>EXTRA HTML AT THE TOP OF THE CONTENT BLOCK</h1>
+<p>This line renders the original block:</p>
+<div id="scratchpad">Scratchpad for charts</div>
+{{ super() }}
+{% endblock %}

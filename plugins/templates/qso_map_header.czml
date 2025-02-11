@@ -1,0 +1,177 @@
+[
+  {
+    "id":"document",
+    "name":"{{ kml_name }}",
+    "version":"1.0",
+    "clock":{
+      "interval":"{{ MinTime }}Z/{{ MaxTime }}Z",
+      "currentTime":"{{ MinTime }}",
+      "multiplier":60,
+      "range":"LOOP_STOP",
+      "step":"SYSTEM_CLOCK_MULTIPLIER"
+    }
+  },
+{% block czml_all_qsos %}{%- for row in Rows %}  {
+    "id":"{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime1 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},0, {{ row['rx_lng'] }},{{ row['rx_lat'] }},0]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ MinTime }}Z/{{ TotMapEnd }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "clampToGround":true
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_f2_qsos %}{%- for row in Rows %}  {
+    "id":"f2{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime2 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},{{ row['elev_tx'] }}, {{ F2Lng[loop.index0] }},{{ F2Lat[loop.index0] }},{{ F2Height[loop.index0] }}]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ MinTime }}Z/{{ TotMapEnd }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "relativeToGround":true
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_f2_down_qsos %}{%- for row in Rows %}  {
+    "id":"f2down{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime3 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ F2Lng[loop.index0] }},{{ F2Lat[loop.index0] }},{{ F2Height[loop.index0] }},{{ row['rx_lng'] }},{{ row['rx_lat'] }},0]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ MinTime }}Z/{{ TotMapEnd }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "relativeToGround":true
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_f2_per_qso %}{%- for row in Rows %}  {
+    "id":"f2perqso{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime4 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},{{ row['elev_tx'] }}, {{ F2Lng[loop.index0] }},{{ F2Lat[loop.index0] }},{{ F2Height[loop.index0] }}]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ row['timestamp'] }}Z/{{ QSO_ends[loop.index0] }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "relativeToGround":true
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_f2_down_per_qso %}{%- for row in Rows %}  {
+    "id":"f2downperqso{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime5 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ F2Lng[loop.index0] }},{{ F2Lat[loop.index0] }},{{ F2Height[loop.index0] }},{{ row['rx_lng'] }},{{ row['rx_lat'] }},0]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ row['timestamp'] }}Z/{{ QSO_ends[loop.index0] }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "clampToGround":false
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_line_per_qso %}{%- for row in Rows %}  {
+    "id":"{{ row['Spotter'] }}",
+    "name":"{{ row['Spotter'] }}",
+    "description":"<H2>{{ row['Spotter'] }}</H2><table><tr><td>datetime6 = {{ row['timestamp'] }}</td></tr><tr><td>rst = {{ row['dB'] }}</td></tr></table>",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},0, {{ row['rx_lng'] }},{{ row['rx_lat'] }},0]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            "rgba":{{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ row['timestamp'] }}Z/{{ QSO_ends[loop.index0] }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":5,
+      "clampToGround":true
+    }
+  }{{ "," if not loop.last }}
+{%- endfor %}{% endblock %}
+
+]

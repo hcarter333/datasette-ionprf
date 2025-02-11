@@ -1,0 +1,3 @@
+{% block pota_adif_line_per_qso %}{%- for row in Rows %}
+<station_callsign:{{row['call']|length}}>{{ row['call'] }}<Call:{{row['Spotter']|length}}>{{ row['Spotter'] }}<QSO_DATE:8>{{ row['date'] }}<TIME_ON:4>{{ row['time'] }}<BAND:3>20M<MODE:2>CW<MY_SIG:4>POTA<MY_SIG_INFO:7>{{ row['park'] }}<eor>
+{%- endfor %}{% endblock %}

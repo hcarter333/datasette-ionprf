@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Include the CesiumJS JavaScript and CSS files -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <script type="module">
+    // Your access token can be found at: https://ion.cesium.com/tokens.
+    // Replace `your_access_token` with your Cesium ion access token.
+    window.addEventListener('DOMContentLoaded', function() {
+        Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+
+// Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
+const viewer = new Cesium.Viewer('cesiumContainer', {
+  terrain: Cesium.Terrain.fromWorldTerrain(),
+});    
+// Fly the camera to San Francisco at the given longitude, latitude, and height.
+viewer.camera.flyTo({
+  destination: Cesium.Cartesian3.fromDegrees(-122.4175, 37.655, 400),
+  orientation: {
+    heading: Cesium.Math.toRadians(0.0),
+    pitch: Cesium.Math.toRadians(-15.0),
+  }
+});
+viewer.dataSources.add(Cesium.CzmlDataSource.load("http://127.0.0.1:8001/rm_toucans.czml?sql=+++++++++select%0D%0A++++++++++++rm_rnb_history_pres.tx_lng+as+longitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.tx_lat+as+latitude_t%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lng+as+longitude%2C%0D%0A++++++++++++rm_rnb_history_pres.rx_lat+as+latitude%2C%0D%0A++++++++++++rx_lat%2C+rx_lng%2C+tx_lat%2C+tx_lng%2C%0D%0A++++++++++++rm_rnb_history_pres.timestamp%2C%0D%0A++++++++++++rm_rnb_history_pres.dB%2C%0D%0A++++++++++++rm_rnb_history_pres.Spotter%2C%0D%0A++++++++++++rm_rnb_history_pres.QSL_link%2C%0D%0A++++++++++++245+as+f2m%2C%0D%0A++++++++++++9720+as+elev_tx%2C%0D%0A++++++++++++photo_path.path%2C%0D%0A++++++++++++photo_path.uuid%2C%0D%0A++++++++++++json_object%28%0D%0A++++++++++++++%27image%27%2C%0D%0A++++++++++++++%27%2F-%2Fmedia%2Fthumbnail%2F%27+%7C%7C+uuid%2C%0D%0A++++++++++++++%27title%27%2C%0D%0A++++++++++++++Spotter+%7C%7C+%27+de+KD0FNR%27%2C%0D%0A++++++++++++++%27description%27%2C%0D%0A++++++++++++++%27rx_rst%3A+%27+%7C%7C+dB+%7C%7C+%27++timestamp%3A+%27+%7C%7C+rm_rnb_history_pres.timestamp%0D%0A++++++++++++%29+as+popup%0D%0A++++++++++from%0D%0A++++++++++++rm_rnb_history_pres%0D%0A++++++++++++LEFT+JOIN+photo_path+ON+rm_rnb_history_pres.QSL_link+%3D+photo_path.uuid%0D%0A++++++++++where%0D%0A++++++++++++%28db+%3E+100+or+db+%3D+0%29%0D%0A++++++++++++and+rm_rnb_history_pres.timestamp+%3E+%272024-06-01%27%0D%0A++++++++++++and+rm_rnb_history_pres.timestamp+%3C+%272024-06-22%27%0D%0A++++++++++++and+Intersects%28%0D%0A++++++++++++++GeomFromGeoJSON%28%3Afreedraw%29%2C%0D%0A++++++++++++++MakePoint%28%0D%0A++++++++++++++++cast%28longitude_t+as+float%29%2C%0D%0A++++++++++++++++cast%28latitude_t+as+float%29%0D%0A++++++++++++++%29%0D%0A++++++++++++%29+%3D+1%0D%0A++++++++++order+by%0D%0A++++++++++++rm_rnb_history_pres.timestamp+desc&freedraw=%7B%22type%22%3A%22MultiPolygon%22%2C%22coordinates%22%3A%5B%5B%5B%5B-103.97461%2C40.24599%5D%2C%5B-103.44727%2C39.90974%5D%2C%5B-103.18359%2C39.57182%5D%2C%5B-102.87598%2C38.37612%5D%2C%5B-102.87598%2C37.19533%5D%2C%5B-103.00781%2C36.66842%5D%2C%5B-103.84277%2C35.67515%5D%2C%5B-104.98535%2C34.77772%5D%2C%5B-105.82031%2C34.37971%5D%2C%5B-107.27051%2C33.97981%5D%2C%5B-108.50098%2C34.01624%5D%2C%5B-109.86328%2C34.41597%5D%2C%5B-110.61035%2C34.88593%5D%2C%5B-111.18164%2C35.42487%5D%2C%5B-111.92871%2C36.49197%5D%2C%5B-112.14844%2C37.23033%5D%2C%5B-112.06055%2C38.03079%5D%2C%5B-111.48926%2C38.54817%5D%2C%5B-110.30273%2C39.3343%5D%2C%5B-108.3252%2C40.27953%5D%2C%5B-107.09473%2C40.6473%5D%2C%5B-105.5127%2C40.68064%5D%2C%5B-103.97461%2C40.24599%5D%5D%5D%5D%7D"));
+
+});
+  </script>
+ </div>
+</body>
+</html>
+
+
+
+
+
