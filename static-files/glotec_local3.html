@@ -1,282 +1,613 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Cesium Viewer Example</title>
-    <!-- Include CesiumJS from the Cesium CDN -->
-    <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
-    <link
-      href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css"
-      rel="stylesheet"
-    />
-    <style>
-      html,
-      body,
-      #cesiumContainer {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-      }
-      /* Layer control panel */
-      #layerControl {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background-color: rgba(42, 42, 42, 0.8);
-        padding: 10px;
-        color: white;
-        font-family: sans-serif;
-        border-radius: 4px;
-      }
-      #layerControl label {
-        display: block;
-        margin-bottom: 5px;
-      }
-      /* Legend panel */
-      #legend {
-        position: absolute;
-        bottom: 10px;
-        right: 10px;
-        background-color: rgba(42, 42, 42, 0.8);
-        padding: 10px;
-        color: white;
-        font-family: sans-serif;
-        border-radius: 4px;
-      }
-      #legend div {
-        margin-bottom: 4px;
-      }
-      /* Update panel */
-      #updatePanel {
-        position: absolute;
-        bottom: 120px;
-        left: 10px;
-        background-color: rgba(42, 42, 42, 0.8);
-        padding: 10px;
-        color: white;
-        font-family: sans-serif;
-        border-radius: 4px;
-      }
-      #updatePanel label {
-        display: block;
-        margin-bottom: 5px;
-      }
-      #updatePanel input[type="text"] {
-        width: 160px;
-        margin-bottom: 5px;
-      }
-      #updatePanel button {
-        margin-top: 5px;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="cesiumContainer"></div>
-    <script>
-      // Set your Cesium Ion access token.
-      Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <title>Cesium Viewer Example</title>
+        <!-- Include CesiumJS from the Cesium CDN -->
+        <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+        <link
+          href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css"
+          rel="stylesheet"
+        />
+        <style>
+          html,
+          body,
+          #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+          }
+          /* Layer control panel */
+          #layerControl {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(42, 42, 42, 0.8);
+            padding: 10px;
+            color: white;
+            font-family: sans-serif;
+            border-radius: 4px;
+          }
+          #layerControl label {
+            display: block;
+            margin-bottom: 5px;
+          }
+          /* Legend panel (we will create two legends via JS) */
+          .legendPanel {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: rgba(42, 42, 42, 0.8);
+            padding: 10px;
+            color: white;
+            font-family: sans-serif;
+            border-radius: 4px;
+            max-width: 150px;
+          }
+          .legendPanel div {
+            margin-bottom: 4px;
+          }
+          /* Update panel */
+          #updatePanel {
+            position: absolute;
+            bottom: 120px;
+            left: 10px;
+            background-color: rgba(42, 42, 42, 0.8);
+            padding: 10px;
+            color: white;
+            font-family: sans-serif;
+            border-radius: 4px;
+          }
+          #updatePanel label {
+            display: block;
+            margin-bottom: 5px;
+          }
+          #updatePanel input[type="text"] {
+            width: 160px;
+            margin-bottom: 5px;
+          }
+          #updatePanel button {
+            margin-top: 5px;
+          }
+        </style>
+      </head>
+      <body>
+        <div id="cesiumContainer"></div>
+        <script>
+          // Set your Cesium Ion access token.
+          Cesium.Ion.defaultAccessToken =
+            'your_token';
 
-      // Initialize the Cesium Viewer.
-      var viewer = new Cesium.Viewer('cesiumContainer', {
-        terrain: Cesium.Terrain.fromWorldTerrain({
-          requestVertexNormals: true
-        })
-      });
-      var osm = new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://tile.openstreetmap.org'
-      });
-      viewer.imageryLayers.addImageryProvider(osm);
-      viewer.scene.globe.enableLighting = true;
+          // Initialize the Cesium Viewer.
+          var viewer = new Cesium.Viewer('cesiumContainer', {
+            terrain: Cesium.Terrain.fromWorldTerrain({
+              requestVertexNormals: true
+            })
+          });
+          viewer.scene.globe.enableLighting = true;
+          var osm = new Cesium.OpenStreetMapImageryProvider({
+            url: 'https://tile.openstreetmap.org'
+          });
+          viewer.imageryLayers.addImageryProvider(osm);
 
-      // Global base URL for the data service.
-      var baseUrl = "http://192.168.0.2/sam_datasette/";
+          async function loadTileset() {
+            try {
+              const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
+              viewer.scene.primitives.add(tileset);
+            } catch (error) {
+              console.log(`Error loading tileset: ${error}`);
+            }
+          }
+          // Call the async function
+          loadTileset();
 
-      // Define default SQL parameters (they will be overridden by user input)
-      var defaultMinLat = 15;
-      var defaultMaxLat = 52;
-      var defaultMinLng = -130;
-      var defaultMaxLng = -60;
-      var defaultStartTs = '2025-02-10T00:25:00';
-      var defaultEndTs = '2025-02-10T01:55:00';
+          // Global base URL for the data service.
+          var baseUrl = "../";
 
-      // Function to build a glotec SQL query (for the standard layer)
-      function buildGlotecSQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
-        var sql = "select " +
-          "uid as Spotter, " +
-          "timestamp, " +
-          "longitude as tx_lng, " +
-          "latitude as tx_lat, " +
-          "hmF2 as dB, " +
-          "hmF2*1000 as elev_tx, " +
-          "hmF2 as edmaxalt, " +
-          "NmF2 " +
-          "from glotec " +
-          "where \"tx_lat\" > " + minLat + " " +
-          "and \"tx_lat\" < " + maxLat + " " +
-          "and \"tx_lng\" > " + minLng + " " +
-          "and \"tx_lng\" < " + maxLng + " " +
-          "and \"timestamp\" > '" + startTs + "' " +
-          "and \"timestamp\" < '" + endTs + "' " +
-          "order by elev_tx asc";
-        return sql;
-      }
+          // Define default SQL parameters (they will be overridden by user input)
+          var defaultMinLat = 15;
+          var defaultMaxLat = 52;
+          var defaultMinLng = -130;
+          var defaultMaxLng = -60;
+          var defaultStartTs = '2025-02-14T00:25:00';
+          var defaultEndTs = '2025-02-14T01:55:00';
 
-      // Function to build a FOF2 SQL query (for the FOF2 layer)
-      function buildFof2SQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
-        var sql = "select " +
-          "uid as Spotter, " +
-          "timestamp, " +
-          "longitude as tx_lng, " +
-          "latitude as tx_lat, " +
-          "(sqrt(NmF2/.0124))/1000 as fof2, " +
-          "(sqrt(NmF2/.0124))/1000 as dB, " +
-          "((sqrt(NmF2/.0124))/1000)*10 as elev_tx, " +
-          "(sqrt(NmF2/.0124))/1000 as edmaxalt, " +
-          "NmF2 " +
-          "from glotec " +
-          "where \"tx_lat\" > " + minLat + " " +
-          "and \"tx_lat\" < " + maxLat + " " +
-          "and \"tx_lng\" > " + minLng + " " +
-          "and \"tx_lng\" < " + maxLng + " " +
-          "and \"timestamp\" > '" + startTs + "' " +
-          "and \"timestamp\" < '" + endTs + "' " +
-          "order by fof2 asc";
-        return sql;
-      }
+          // Function to build a glotec SQL query (for the standard layer)
+          function buildGlotecSQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
+            var sql =
+              "select " +
+              "uid as Spotter, " +
+              "timestamp, " +
+              "longitude as tx_lng, " +
+              "latitude as tx_lat, " +
+              "hmF2 as dB, " +
+              "hmF2*1000 as elev_tx, " +
+              "hmF2 as edmaxalt, " +
+              "NmF2 " +
+              "from glotec " +
+              "where \"tx_lat\" > " +
+              minLat +
+              " " +
+              "and \"tx_lat\" < " +
+              maxLat +
+              " " +
+              "and \"tx_lng\" > " +
+              minLng +
+              " " +
+              "and \"tx_lng\" < " +
+              maxLng +
+              " " +
+              "and \"timestamp\" > '" +
+              startTs +
+              "' " +
+              "and \"timestamp\" < '" +
+              endTs +
+              "' " +
+              "and \"hmF2\" > 0 " +
+              "order by elev_tx asc";
+            return sql;
+          }
 
-      // Global data source variables so we can update them.
-      var glotecDataSource;
-      var fof2DataSource;
+          // Function to build a FOF2 SQL query (for the FOF2 layer)
+          function buildFof2SQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
+            var sql =
+              "select " +
+              "uid as Spotter, " +
+              "timestamp, " +
+              "longitude as tx_lng, " +
+              "latitude as tx_lat, " +
+              "(sqrt(NmF2/.0124))/1000 as fof2, " +
+              "(sqrt(NmF2/.0124))/1000 as dB, " +
+              "hmF2*1000 as elev_tx, " +
+              "(sqrt(NmF2/.0124))/1000 as edmaxalt, " +
+              "NmF2 " +
+              "from glotec " +
+              "where \"tx_lat\" > " +
+              minLat +
+              " " +
+              "and \"tx_lat\" < " +
+              maxLat +
+              " " +
+              "and \"tx_lng\" > " +
+              minLng +
+              " " +
+              "and \"tx_lng\" < " +
+              maxLng +
+              " " +
+              "and \"timestamp\" > '" +
+              startTs +
+              "' " +
+              "and \"timestamp\" < '" +
+              endTs +
+              "' " +
+              "order by fof2 asc";
+            return sql;
+          }
 
-      // Function to load or update the CZML layers based on the given parameters.
-      function updateMap(minLat, maxLat, minLng, maxLng, startTs, endTs) {
-        // Build SQL query strings and encode them.
-        var glotecSQL = buildGlotecSQL(minLat, maxLat, minLng, maxLng, startTs, endTs);
-        var fof2SQL = buildFof2SQL(minLat, maxLat, minLng, maxLng, startTs, endTs);
-        var glotecUrl = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(glotecSQL);
-        var fof2Url = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(fof2SQL);
+          // Global data source variables so we can update them.
+          var glotecDataSource;
+          var fof2DataSource;
+          var qsoDataSource;
 
-        // Remove existing glotec and fof2 data sources (if any).
-        if (glotecDataSource) {
-          viewer.dataSources.remove(glotecDataSource, true);
+          // ------------------------------
+          // Methods to compute min/max values
+          // ------------------------------
+
+          // For Glotec (hmF2 values are loaded as "dB")
+    // For Glotec (hmF2): Parse the number after "hmF2" in the _description._value field.
+    function getMaxHmF2() {
+      if (!glotecDataSource) return null;
+      let maxVal = -Infinity;
+      glotecDataSource.entities.values.forEach(entity => {
+        if (entity._description && entity._description._value) {
+          // Regex to match "hmF2" followed by a number (which may include decimals)
+          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          if (match && !isNaN(match[1])) {
+            const value = parseFloat(match[1]);
+            if (value > maxVal) {
+              maxVal = value;
+            }
+          }
         }
-        if (fof2DataSource) {
-          viewer.dataSources.remove(fof2DataSource, true);
+      });
+      return maxVal;
+    }
+
+    function getMinHmF2() {
+      if (!glotecDataSource) return null;
+      let minVal = Infinity;
+      glotecDataSource.entities.values.forEach(entity => {
+        if (entity._description && entity._description._value) {
+          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          if (match && !isNaN(match[1])) {
+            const value = parseFloat(match[1]);
+            if (value < minVal) {
+              minVal = value;
+            }
+          }
         }
-
-        // Load new data sources.
-        Cesium.CzmlDataSource.load(glotecUrl).then(function(ds) {
-          glotecDataSource = ds;
-          viewer.dataSources.add(glotecDataSource);
-        });
-
-        Cesium.CzmlDataSource.load(fof2Url).then(function(ds) {
-          fof2DataSource = ds;
-          viewer.dataSources.add(fof2DataSource);
-        });
-      }
-
-      // Initially load layers with default parameters.
-      updateMap(defaultMinLat, defaultMaxLat, defaultMinLng, defaultMaxLng, defaultStartTs, defaultEndTs);
-
-      // Create a layer control panel with two checkboxes.
-      var layerPanel = document.createElement("div");
-      layerPanel.id = "layerControl";
-      layerPanel.innerHTML =
-        '<label><input id="toggleGlotec" type="checkbox" checked> Glotec Map</label>' +
-        '<label><input id="toggleFof2" type="checkbox" checked> FOF2 Glotec Map</label>';
-      document.body.appendChild(layerPanel);
-
-      document.getElementById("toggleGlotec").addEventListener("change", function(e) {
-        if (glotecDataSource) glotecDataSource.show = e.target.checked;
       });
-      document.getElementById("toggleFof2").addEventListener("change", function(e) {
-        if (fof2DataSource) fof2DataSource.show = e.target.checked;
+      return minVal;
+    }
+
+    // For FOF2: Parse the number after "fof2" in the _description._value field.
+    function getMaxFof2() {
+      if (!fof2DataSource) return null;
+      let maxVal = -Infinity;
+      fof2DataSource.entities.values.forEach(entity => {
+        if (entity._description && entity._description._value) {
+          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          if (match && !isNaN(match[1])) {
+            const value = parseFloat(match[1]);
+            if (value > maxVal) {
+              maxVal = value;
+            }
+          }
+        }
       });
+      return maxVal;
+    }
 
-      // Create a panel for inputting update parameters.
-      var updatePanel = document.createElement("div");
-      updatePanel.id = "updatePanel";
-      updatePanel.innerHTML =
-        '<label>Min Latitude: <input id="minLat" type="text" value="' + defaultMinLat + '"></label>' +
-        '<label>Max Latitude: <input id="maxLat" type="text" value="' + defaultMaxLat + '"></label>' +
-        '<label>Min Longitude: <input id="minLng" type="text" value="' + defaultMinLng + '"></label>' +
-        '<label>Max Longitude: <input id="maxLng" type="text" value="' + defaultMaxLng + '"></label>' +
-        '<label>Start Timestamp: <input id="startTs" type="text" value="' + defaultStartTs + '"></label>' +
-        '<label>End Timestamp: <input id="endTs" type="text" value="' + defaultEndTs + '"></label>' +
-        '<button id="updateBtn">Update Map</button>';
-      document.body.appendChild(updatePanel);
-
-      document.getElementById("updateBtn").addEventListener("click", function() {
-        var minLat = parseFloat(document.getElementById("minLat").value);
-        var maxLat = parseFloat(document.getElementById("maxLat").value);
-        var minLng = parseFloat(document.getElementById("minLng").value);
-        var maxLng = parseFloat(document.getElementById("maxLng").value);
-        var startTs = document.getElementById("startTs").value;
-        var endTs = document.getElementById("endTs").value;
-        updateMap(minLat, maxLat, minLng, maxLng, startTs, endTs);
+    function getMinFof2() {
+      if (!fof2DataSource) return null;
+      let minVal = Infinity;
+      fof2DataSource.entities.values.forEach(entity => {
+        if (entity._description && entity._description._value) {
+          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          if (match && !isNaN(match[1])) {
+            const value = parseFloat(match[1]);
+            if (value < minVal) {
+              minVal = value;
+            }
+          }
+        }
       });
+      return minVal;
+    }
 
-      // --- Legend Section (as before) ---
-      var legendMin = 268; // adjust as needed
-      var legendMax = 348; // adjust as needed
-      var colorScale = [
-        { rgba: [0, 0, 0, 255] },
-        { rgba: [165, 42, 42, 255] },
-        { rgba: [255, 0, 0, 255] },
-        { rgba: [255, 165, 0, 255] },
-        { rgba: [255, 255, 0, 255] },
-        { rgba: [0, 128, 0, 255] },
-        { rgba: [0, 0, 255, 255] },
-        { rgba: [238, 130, 238, 255] },
-        { rgba: [255, 255, 255, 255] }
-      ];
-      var nColors = colorScale.length;
-      var bucketSize = (legendMax - legendMin) / nColors;
+          // ------------------------------
+          // Legend builder function
+          // ------------------------------
+          // We'll use the same color scale for both legends.
+          var colorScale = [
+    { rgba: [0, 0, 0, 255] },
+    { rgba: [165, 42, 42, 255] },
+    { rgba: [255, 0, 0, 255] },
+    { rgba: [255, 165, 0, 255] },
+    { rgba: [255, 255, 0, 255] },
+    { rgba: [0, 128, 0, 255] },
+    { rgba: [0, 0, 255, 255] },
+    { rgba: [238, 130, 238, 255] },
+    { rgba: [128, 128, 128, 255] },
+    { rgba: [255, 255, 255, 255] }
+          ];
 
-      var legendPanel = document.createElement("div");
-      legendPanel.id = "legend";
-      legendPanel.style.position = "absolute";
-      legendPanel.style.bottom = "10px";
-      legendPanel.style.right = "10px";
-      legendPanel.style.backgroundColor = "rgba(42, 42, 42, 0.8)";
-      legendPanel.style.padding = "10px";
-      legendPanel.style.color = "white";
-      legendPanel.style.fontFamily = "sans-serif";
-      legendPanel.style.borderRadius = "4px";
+          // Create or update a legend panel based on given min, max, and title.
+          function buildLegend(containerId, minVal, maxVal, title) {
+            var container = document.getElementById(containerId);
+            if (!container) {
+              container = document.createElement("div");
+              container.id = containerId;
+              container.className = "legendPanel";
+              // Positioning: we offset each legend so they don't overlap.
+              if (containerId === "legendHmF2") {
+                container.style.right = "10px";
+                container.style.bottom = "10px";
+              } else if (containerId === "legendFof2") {
+                container.style.right = "180px";
+                container.style.bottom = "10px";
+              }
+              document.body.appendChild(container);
+            }
+            // Clear previous legend content.
+            container.innerHTML = "<strong>" + title + "</strong><br/>";
+            var nColors = colorScale.length;
+            var bucketSize = (maxVal - minVal) / nColors;
+            for (var i = 0; i < nColors; i++) {
+              var lowerBound = minVal + bucketSize * i;
+              var upperBound = minVal + bucketSize * (i + 1);
+              var rgba = colorScale[i].rgba;
+              var cssColor =
+                "rgba(" +
+                rgba[0] +
+                ", " +
+                rgba[1] +
+                ", " +
+                rgba[2] +
+                ", " +
+                rgba[3] / 255 +
+                ")";
+              var row = document.createElement("div");
+              row.style.display = "flex";
+              row.style.alignItems = "center";
+              row.style.marginBottom = "4px";
+              var swatch = document.createElement("div");
+              swatch.style.width = "20px";
+              swatch.style.height = "20px";
+              swatch.style.backgroundColor = cssColor;
+              swatch.style.marginRight = "8px";
+              var label = document.createElement("div");
+              label.textContent =
+                lowerBound.toFixed(1) + " - " + upperBound.toFixed(1);
+              row.appendChild(swatch);
+              row.appendChild(label);
+              container.appendChild(row);
+            }
+          }
 
-      var legendTitle = document.createElement("div");
-      legendTitle.innerHTML = "<strong>Legend</strong>";
-      legendTitle.style.marginBottom = "8px";
-      legendPanel.appendChild(legendTitle);
+          // Update legends based on current checkbox selections and loaded data.
+          function updateLegends() {
+            var glotecCheckbox = document.getElementById("toggleGlotec");
+            if (glotecCheckbox.checked && glotecDataSource) {
+              var minHmF2 = getMinHmF2();
+              var maxHmF2 = getMaxHmF2();
+              if (minHmF2 !== null && maxHmF2 !== null) {
+                buildLegend("legendHmF2", minHmF2, maxHmF2, "hmF2 Legend");
+                document.getElementById("legendHmF2").style.display = "block";
+              }
+            } else {
+              var legendHmF2 = document.getElementById("legendHmF2");
+              if (legendHmF2) legendHmF2.style.display = "none";
+            }
 
-      for (var i = 0; i < nColors; i++) {
-        var lowerBound = legendMin + bucketSize * i;
-        var upperBound = legendMin + bucketSize * (i + 1);
-        var rgba = colorScale[i].rgba;
-        var cssColor = "rgba(" + rgba[0] + ", " + rgba[1] + ", " + rgba[2] + ", " + (rgba[3] / 255) + ")";
-        
-        var row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.marginBottom = "4px";
+            var fof2Checkbox = document.getElementById("toggleFof2");
+            if (fof2Checkbox.checked && fof2DataSource) {
+              var minFof2 = getMinFof2();
+              var maxFof2 = getMaxFof2();
+              if (minFof2 !== null && maxFof2 !== null) {
+                buildLegend("legendFof2", minFof2, maxFof2, "FOF2 Legend");
+                document.getElementById("legendFof2").style.display = "block";
+              }
+            } else {
+              var legendFof2 = document.getElementById("legendFof2");
+              if (legendFof2) legendFof2.style.display = "none";
+            }
+          }
 
-        var swatch = document.createElement("div");
-        swatch.style.width = "20px";
-        swatch.style.height = "20px";
-        swatch.style.backgroundColor = cssColor;
-        swatch.style.marginRight = "8px";
+          // ------------------------------
+          // Function to load or update the CZML layers based on the given parameters.
+          // ------------------------------
+          function updateMap(minLat, maxLat, minLng, maxLng, startTs, endTs) {
+            // Build SQL query strings and encode them.
+            var glotecSQL = buildGlotecSQL(
+              minLat,
+              maxLat,
+              minLng,
+              maxLng,
+              startTs,
+              endTs
+            );
+            var fof2SQL = buildFof2SQL(
+              minLat,
+              maxLat,
+              minLng,
+              maxLng,
+              startTs,
+              endTs
+            );
+            var glotecUrl = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(glotecSQL);
+            var fof2Url = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(fof2SQL);
+            console.debug("hmF2 " + glotecUrl);
+            console.debug("fof2Url" + fof2Url);
+            // Remove existing glotec and fof2 data sources (if any).
+            if (glotecDataSource) {
+              viewer.dataSources.remove(glotecDataSource, true);
+            }
+            if (fof2DataSource) {
+              viewer.dataSources.remove(fof2DataSource, true);
+            }
 
-        var label = document.createElement("div");
-        label.textContent = lowerBound.toFixed(1) + " - " + upperBound.toFixed(1);
+            // Load new data sources.
+            Cesium.CzmlDataSource.load(glotecUrl).then(function (ds) {
+              glotecDataSource = ds;
+              viewer.dataSources.add(glotecDataSource);
+              // Once loaded, update the legends.
+              updateLegends();
+            });
 
-        row.appendChild(swatch);
-        row.appendChild(label);
-        legendPanel.appendChild(row);
-      }
-      document.body.appendChild(legendPanel);
-    </script>
-  </body>
-</html>
+            Cesium.CzmlDataSource.load(fof2Url).then(function (ds) {
+              fof2DataSource = ds;
+              viewer.dataSources.add(fof2DataSource);
+              updateLegends();
+            });
+
+            // (The qsoDataSource remains unchanged.)
+            //var qso_url =
+            //  'https://raw.githubusercontent.com/hcarter333/rm-rbn-history/refs/heads/main/maps/025_02_16_US_4758_Pony_Express_Short.czml';
+            //var qso_url = 
+            //  'http://192.168.0.203/sam_datasette/_memory.czml?sql=WITH+qso+AS+%28%0D%0A++SELECT+*%2C%0D%0A++midpoint_lat%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lat%2C%0D%0A++midpoint_lng%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lng%2C++%0D%0A++haversine%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+length%0D%0A++FROM+%5Brm_toucans%5D.rm_rnb_history_pres%0D%0A++WHERE+timestamp+BETWEEN+%272025-02-18T00%3A00%3A00Z%27+AND+%272025-02-18T23%3A59%3A59Z%27+and+dB+%3E+100%0D%0A%29%2C%0D%0Af2+AS+%28%0D%0A++SELECT+*%0D%0A++FROM+%5Bglotec%5D.glotec%0D%0A++WHERE+timestamp+BETWEEN+%272025-02-18T00%3A00%3A00Z%27+AND+%272025-02-18T23%3A59%3A59Z%27%0D%0A%29%0D%0ASELECT+%0D%0A++qso.timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+qso.timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+qso.timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++tx_rst%2C%0D%0A++qso.tx_lat%2C%0D%0A++qso.Spotter%2C%0D%0A++qso.tx_lng%2C%0D%0A++qso.rx_lat%2C%0D%0A++qso.rx_lng%2C%0D%0A++qso.ap_lat%2C%0D%0A++qso.ap_lng%2C%0D%0A++325+as+ionosonde%2C%0D%0A++65+as+elev_tx%2C%0D%0A++%22US-4578%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++call%2C%0D%0A++%28%0D%0A++++SELECT+max%28f.hmF2%29%0D%0A++++FROM+f2+AS+f%0D%0A++++where%0D%0A++++++f.latitude+BETWEEN+%0D%0A+++++++++qso.ap_lat+-+1.5%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lat+%2B+1.5%0D%0A++++++AND%0D%0A++++++f.longitude+BETWEEN+%0D%0A+++++++++qso.ap_lng+-+3%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lng+%2B+3%0D%0A+++++and+%28ABS%28strftime%28%27%25s%27%2C+f.timestamp%29+-+strftime%28%27%25s%27%2C+qso.timestamp%29%29%2F60%29+%3C+6%0D%0A++%29+AS+f2m%0D%0A%0D%0AFROM+qso%3B%0D%0A';
+            //var qso_url = 
+            //  'http://192.168.0.203/sam_datasette/_memory.czml?sql=WITH+qso+AS+%28%0D%0A++SELECT+*%2C%0D%0A++midpoint_lat%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lat%2C%0D%0A++midpoint_lng%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lng%2C++%0D%0A++haversine%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+length%0D%0A++FROM+%5Brm_toucans%5D.rm_rnb_history_pres%0D%0A++WHERE+timestamp+BETWEEN+%272025-02-21T01%3A34%3A00Z%27+AND+%272025-02-21T01%3A46%3A00Z%27+and+dB+%3E+100%0D%0A%29%2C%0D%0Af2+AS+%28%0D%0A++SELECT+*%0D%0A++FROM+%5Bglotec%5D.glotec%0D%0A++WHERE+timestamp+BETWEEN+%272025-02-21T01%3A34%3A00Z%27+AND+%272025-02-21T01%3A46%3A00Z%27%0D%0A%29%0D%0ASELECT+%0D%0A++qso.timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+qso.timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+qso.timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++tx_rst%2C%0D%0A++qso.tx_lat%2C%0D%0A++qso.Spotter%2C%0D%0A++qso.tx_lng%2C%0D%0A++qso.rx_lat%2C%0D%0A++qso.rx_lng%2C%0D%0A++325+as+ionosonde%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4578%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++call%2C%0D%0A++%28%0D%0A++++SELECT+max%28f.hmF2%29%0D%0A++++FROM+f2+AS+f%0D%0A++++where%0D%0A++++++f.latitude+BETWEEN+%0D%0A+++++++++qso.ap_lat+-+3.5%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lat+%2B+3.5%0D%0A++++++AND%0D%0A++++++f.longitude+BETWEEN+%0D%0A+++++++++qso.ap_lng+-+7%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lng+%2B+7%0D%0A+++++and+%28ABS%28strftime%28%27%25s%27%2C+f.timestamp%29+-+strftime%28%27%25s%27%2C+qso.timestamp%29%29%2F60%29+%3C+11%0D%0A++%29+AS+f2m%0D%0A%0D%0AFROM+qso%3B%0D%0A'
+            //var qso_url = 
+            //  'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++301+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++timestamp+%3E+%272025-02-22%27%0D%0A++and+timestamp+%3C+%272025-02-23%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
+            //2025_02_24 Seden
+            var qso_url = 
+              'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++324+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++dB+%3E100%0D%0A++and+timestamp+%3E+%272025-02-24%27%0D%0A++and+timestamp+%3C+%272025-02-25%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
+              Cesium.CzmlDataSource.load(qso_url).then(function (ds) {
+              qsoDataSource = ds;
+              viewer.dataSources.add(qsoDataSource);
+            });
+          }
+
+          // Initially load layers with default parameters.
+          updateMap(
+            defaultMinLat,
+            defaultMaxLat,
+            defaultMinLng,
+            defaultMaxLng,
+            defaultStartTs,
+            defaultEndTs
+          );
+
+          // Create a layer control panel with two checkboxes.
+          var layerPanel = document.createElement("div");
+          layerPanel.id = "layerControl";
+          layerPanel.innerHTML =
+            '<label><input id="toggleGlotec" type="checkbox" checked> Glotec Map</label>' +
+            '<label><input id="toggleFof2" type="checkbox" checked> FOF2 Glotec Map</label>';
+          document.body.appendChild(layerPanel);
+
+          document.getElementById("toggleGlotec").addEventListener("change", function (e) {
+            if (glotecDataSource) glotecDataSource.show = e.target.checked;
+            updateLegends();
+          });
+          document.getElementById("toggleFof2").addEventListener("change", function (e) {
+            if (fof2DataSource) fof2DataSource.show = e.target.checked;
+            updateLegends();
+          });
+
+          // Create a panel for inputting update parameters.
+          var updatePanel = document.createElement("div");
+          updatePanel.id = "updatePanel";
+          updatePanel.innerHTML =
+            '<label>Min Latitude: <input id="minLat" type="text" value="' +
+            defaultMinLat +
+            '"></label>' +
+            '<label>Max Latitude: <input id="maxLat" type="text" value="' +
+            defaultMaxLat +
+            '"></label>' +
+            '<label>Min Longitude: <input id="minLng" type="text" value="' +
+            defaultMinLng +
+            '"></label>' +
+            '<label>Max Longitude: <input id="maxLng" type="text" value="' +
+            defaultMaxLng +
+            '"></label>' +
+            '<label>Start Timestamp: <input id="startTs" type="text" value="' +
+            defaultStartTs +
+            '"></label>' +
+            '<label>End Timestamp: <input id="endTs" type="text" value="' +
+            defaultEndTs +
+            '"></label>' +
+            '<button id="updateBtn">Update Map</button>';
+          document.body.appendChild(updatePanel);
+
+          document.getElementById("updateBtn").addEventListener("click", function () {
+            var minLat = parseFloat(document.getElementById("minLat").value);
+            var maxLat = parseFloat(document.getElementById("maxLat").value);
+            var minLng = parseFloat(document.getElementById("minLng").value);
+            var maxLng = parseFloat(document.getElementById("maxLng").value);
+            var startTs = document.getElementById("startTs").value;
+            var endTs = document.getElementById("endTs").value;
+            updateMap(minLat, maxLat, minLng, maxLng, startTs, endTs);
+          });
+
+/// Global flag for rectangle selection mode.
+var rectangleSelectionEnabled = false;
+
+// Create a toggle button for rectangle selection.
+var toggleRectButton = document.createElement("button");
+toggleRectButton.id = "toggleRectSelection";
+toggleRectButton.textContent = "Enable Rectangle Selection";
+toggleRectButton.style.position = "absolute";
+toggleRectButton.style.top = "10px";
+toggleRectButton.style.right = "10px";
+toggleRectButton.style.zIndex = 1000;
+document.body.appendChild(toggleRectButton);
+
+// Toggle rectangle selection mode and update camera controls.
+toggleRectButton.addEventListener("click", function () {
+  rectangleSelectionEnabled = !rectangleSelectionEnabled;
+  if (rectangleSelectionEnabled) {
+    toggleRectButton.textContent = "Disable Rectangle Selection";
+    // Disable camera movement so the map doesn't move.
+    viewer.scene.screenSpaceCameraController.enableRotate = false;
+    viewer.scene.screenSpaceCameraController.enableTranslate = false;
+    viewer.scene.screenSpaceCameraController.enableZoom = false;
+    viewer.scene.screenSpaceCameraController.enableTilt = false;
+    viewer.scene.screenSpaceCameraController.enableLook = false;
+  } else {
+    toggleRectButton.textContent = "Enable Rectangle Selection";
+    // Re-enable camera controls.
+    viewer.scene.screenSpaceCameraController.enableRotate = true;
+    viewer.scene.screenSpaceCameraController.enableTranslate = true;
+    viewer.scene.screenSpaceCameraController.enableZoom = true;
+    viewer.scene.screenSpaceCameraController.enableTilt = true;
+    viewer.scene.screenSpaceCameraController.enableLook = true;
+  }
+});
+
+// --- Rectangle Selection Code ---
+var selectionDiv = document.createElement("div");
+selectionDiv.style.position = "absolute";
+selectionDiv.style.border = "2px dashed #fff";
+selectionDiv.style.backgroundColor = "rgba(0, 150, 255, 0.2)";
+selectionDiv.style.pointerEvents = "none";
+selectionDiv.style.display = "none";
+document.body.appendChild(selectionDiv);
+
+var isSelecting = false;
+var startPoint = null;
+var endPoint = null;
+
+var handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas);
+
+// LEFT_DOWN: start selection if rectangleSelectionEnabled is true.
+handler.setInputAction(function (click) {
+  if (!rectangleSelectionEnabled) return;
+  isSelecting = true;
+  startPoint = click.position;
+  selectionDiv.style.left = startPoint.x + "px";
+  selectionDiv.style.top = startPoint.y + "px";
+  selectionDiv.style.width = "0px";
+  selectionDiv.style.height = "0px";
+  selectionDiv.style.display = "block";
+}, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+// MOUSE_MOVE: update rectangle dimensions.
+handler.setInputAction(function (movement) {
+  if (!rectangleSelectionEnabled || !isSelecting) return;
+  endPoint = movement.endPosition;
+  var left = Math.min(startPoint.x, endPoint.x);
+  var top = Math.min(startPoint.y, endPoint.y);
+  var width = Math.abs(startPoint.x - endPoint.x);
+  var height = Math.abs(startPoint.y - endPoint.y);
+  selectionDiv.style.left = left + "px";
+  selectionDiv.style.top = top + "px";
+  selectionDiv.style.width = width + "px";
+  selectionDiv.style.height = height + "px";
+}, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+// LEFT_UP: finish selection, update coordinate inputs, and trigger update.
+handler.setInputAction(function (click) {
+  if (!rectangleSelectionEnabled || !isSelecting) return;
+  isSelecting = false;
+  selectionDiv.style.display = "none";
+  endPoint = click.position;
+  
+  var ellipsoid = viewer.scene.globe.ellipsoid;
+  var cartesianStart = viewer.camera.pickEllipsoid(startPoint, ellipsoid);
+  var cartesianEnd = viewer.camera.pickEllipsoid(endPoint, ellipsoid);
+  
+  if (cartesianStart && cartesianEnd) {
+    var cartoStart = Cesium.Cartographic.fromCartesian(cartesianStart);
+    var cartoEnd = Cesium.Cartographic.fromCartesian(cartesianEnd);
+    
+    // Convert using Cesium.Math.toDegrees.
+    var startLat = Cesium.Math.toDegrees(cartoStart.latitude);
+    var startLng = Cesium.Math.toDegrees(cartoStart.longitude);
+    var endLat = Cesium.Math.toDegrees(cartoEnd.latitude);
+    var endLng = Cesium.Math.toDegrees(cartoEnd.longitude);
+    
+    var minLat = Math.min(startLat, endLat);
+    var maxLat = Math.max(startLat, endLat);
+    var minLng = Math.min(startLng, endLng);
+    var maxLng = Math.max(startLng, endLng);
+    
+    // Update the text input fields.
+    document.getElementById("minLat").value = minLat.toFixed(4);
+    document.getElementById("maxLat").value = maxLat.toFixed(4);
+    document.getElementById("minLng").value = minLng.toFixed(4);
+    document.getElementById("maxLng").value = maxLng.toFixed(4);
+    
+    // Trigger the update button click.
+    document.getElementById("updateBtn").click();
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+
+
+        </script>
+      </body>
+    </html>
