@@ -59,7 +59,7 @@ target_dt = datetime(target_year, target_month, target_day, target_hour, target_
 BASE_URL = "https://services.swpc.noaa.gov/"
 
 # URL to the JSON file that lists the GeoJSON file entries
-LISTING_URL = "https://services.swpc.noaa.gov/experimental/products/glotec/geojson_2d_urt.json"
+LISTING_URL = "https://services.swpc.noaa.gov/products/glotec/geojson_2d_urt.json"
 
 
 # -------------------------
