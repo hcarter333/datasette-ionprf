@@ -1,6 +1,8 @@
+from datasette import hookimpl
 import math
 deg2rad = math.pi/180
 rad2deg = 180/math.pi
+er = 6357
 
 def cartesian_x(f,l):
     #f = latitude, l = longitude
@@ -54,7 +56,7 @@ def partial_path_lat(f0,l0, f1,l1, parts):
     x_mid = (x_0+((x_1-x_0)/parts))
     y_mid = (y_0+((y_1-y_0)/parts))
     z_mid = (z_0+((z_1-z_0)/parts))
-    print(str(x_mid) + " " + str(y_mid) + " " + str(z_mid))
+    #print(str(x_mid) + " " + str(y_mid) + " " + str(z_mid))
     return spherical_lat(x_mid, y_mid, z_mid)
 
 def partial_path_lng(f0,l0, f1,l1, parts):
@@ -97,6 +99,18 @@ def law_sines(re, c_side, swangle):
 def launch_angle(swangle, sine_angle):
     return ((math.pi - (sine_angle*deg2rad) - (swangle*deg2rad))-(math.pi/2))*rad2deg
 
+def launchangle(f0,l0,f1,l1,f2m):
+    print("call to launch angle " + str(f2m))
+    sw = swept_angle(f0,l0,f1,l1)
+    ts = law_cosines(er, f2m, sw)
+    thdangle = law_sines(er, ts, sw)
+    return (180 - sw - thdangle) - 90
+
+@hookimpl
+def prepare_connection(conn):
+    conn.create_function("midpoint_lng", 4, midpoint_lng)
+    conn.create_function("midpoint_lat", 4, midpoint_lat)
+    conn.create_function("launchangle", 5, launchangle)
 
 
 #half_lat = midpoint_lat(37.72286,-122.42299, 41.0625,-112.0417)
