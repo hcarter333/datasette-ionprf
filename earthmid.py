@@ -1,6 +1,7 @@
 import math
 deg2rad = math.pi/180
 rad2deg = 180/math.pi
+er = 6357
 
 def cartesian_x(f,l):
     #f = latitude, l = longitude
@@ -97,6 +98,11 @@ def law_sines(re, c_side, swangle):
 def launch_angle(swangle, sine_angle):
     return ((math.pi - (sine_angle*deg2rad) - (swangle*deg2rad))-(math.pi/2))*rad2deg
 
+def launchangle(f0,l0,f1,l1,f2m):
+    sw = swept_angle(f0,l0,f1,l1)
+    ts = law_cosines(er, f2m, sw)
+    thdangle = law_sines(er, ts, sw)
+    return (180 - sw - thdangle) - 90
 
 
 #half_lat = midpoint_lat(37.72286,-122.42299, 41.0625,-112.0417)
