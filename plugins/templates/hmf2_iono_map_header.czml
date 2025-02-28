@@ -1,0 +1,69 @@
+[
+  {
+    "id":"document",
+    "name":"{{ kml_name }}",
+    "version":"1.0",
+    "clock":{
+      "interval":"{{ MinTime }}Z/{{ MaxTime }}Z",
+      "currentTime":"{{ MinTime }}Z",
+      "multiplier":60,
+      "range":"LOOP_STOP",
+      "step":"SYSTEM_CLOCK_MULTIPLIER"
+    }
+  },
+{% block czml_f2_qsos %}{%- for row in Rows %}  {
+    "id":"id {{ row['Spotter'] }} hmF2{{ row['elev_tx'] }} km",
+    "name":"time {{ row['timestamp'] }} hmF2 {{ row['dB'] }} km",
+    "description":"time {{ row['timestamp'] }} hmF2 {{ row['dB'] }} km",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},0.0, {{ row['tx_lng'] }},{{ row['tx_lat'] }},{{ row['elev_tx'] }}]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            {{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ MinTime }}Z/{{ TotMapEnd }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":10,
+      "relativeToGround":true
+    }
+  },
+{%- endfor %}{% endblock %}
+{% block czml_f2_per_qso %}{%- for row in Rows %}  {
+    "id":"id live {{ row['Spotter'] }} hmF2{{ row['elev_tx'] }} km",
+    "name":"time {{ row['timestamp'] }} hmF2 {{ row['dB'] }} km",
+    "description":"time {{ row['timestamp'] }} hmF2 {{ row['dB'] }} km",
+    "polyline":{
+      "positions":{
+        "cartographicDegrees":[{{ row['tx_lng'] }},{{ row['tx_lat'] }},0.0, {{ row['tx_lng'] }},{{ row['tx_lat'] }},{{ row['elev_tx'] }}]
+      },
+      "material":{
+        "solidColor":{
+          "color":{
+            {{ line_color(row['dB']) }}
+          }
+        }
+      },
+      "show":[
+          {
+              "interval":"{{ row['timestamp'] }}/{{ QSO_ends[loop.index0] }}Z",
+              "boolean":true
+          }
+      ],
+      
+      "width":10,
+      "relativeToGround":true
+    }
+  }{{ "," if not loop.last }}
+{%- endfor %}{% endblock %}
+
+]
