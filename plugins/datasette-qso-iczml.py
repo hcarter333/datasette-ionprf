@@ -16,6 +16,7 @@ deg2rad = math.pi/180
 rad2deg = 180/math.pi
 colormin = 278
 colormax = 352
+hmF2_colors = 255
 
 def cartesian_x(f,l):
     #f = latitude, l = longitude
@@ -115,16 +116,16 @@ def launch_angle(swangle, sine_angle):
 
 
 
-signal_colors = {"1": "#ff004b96",
-                 "0": "#ff004b96",
-                 "2": "#ff0000ff",
-                 "3": "#ff00a5ff",
-                 "4": "#ff00ffff",
-                 "5": "#ff00ff00",
-                 "6": "#ffff0000",
-                 "7": "#ff82004b",
-                 "8": "#ffff007f",
-                 "9": "#ffffffff",
+signal_colors = {"1": "#88004b96",
+                 "0": "#66004b96",
+                 "2": "#660000ff",
+                 "3": "#6600a5ff",
+                 "4": "#6600ffff",
+                 "5": "#6600ff00",
+                 "6": "#66ff0000",
+                 "7": "#6682004b",
+                 "8": "#66ff007f",
+                 "9": "#66ffffff",
                  }
 
 def db_to_s(db):
@@ -153,16 +154,17 @@ def db_to_s(db):
 
 def load_colors():
     global signal_colors
-    signal_colors["1"] = "[" + str(int("96", 16)) + "," + str(int("4b", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["0"] = "[" + str(int("96", 16)) + "," + str(int("4b", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["2"] = "[" + str(int("ff", 16)) + "," + str(int("00", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["3"] = "[" + str(int("ff", 16)) + "," + str(int("a5", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["4"] = "[" + str(int("ff", 16)) + "," + str(int("ff", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["5"] = "[" + str(int("00", 16)) + "," + str(int("ff", 16)) + "," +str(int("00", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["6"] = "[" + str(int("00", 16)) + "," + str(int("00", 16)) + "," +str(int("ff", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["7"] = "[" + str(int("4b", 16)) + "," + str(int("00", 16)) + "," +str(int("82", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["8"] = "[" + str(int("7f", 16)) + "," + str(int("00", 16)) + "," +str(int("ff", 16)) + "," +str(int("ff", 16)) + "]"
-    signal_colors["9"] = "[" + str(int("ff", 16)) + "," + str(int("ff", 16)) + "," +str(int("ff", 16)) + "," +str(int("ff", 16)) + "]"
+    global hmF2_colors
+    signal_colors["1"] = "[" + str(int("96", 16)) + "," + str(int("4b", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
+    signal_colors["0"] = "[" + str(int("00", 16)) + "," + str(int("00", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
+    signal_colors["2"] = "[" + str(int("ff", 16)) + "," + str(int("00", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]" #red
+    signal_colors["3"] = "[" + str(int("ff", 16)) + "," + str(int("a5", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
+    signal_colors["4"] = "[" + str(int("ff", 16)) + "," + str(int("ff", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
+    signal_colors["5"] = "[" + str(int("00", 16)) + "," + str(int("ff", 16)) + "," +str(int("00", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]" #green
+    signal_colors["6"] = "[" + str(int("00", 16)) + "," + str(int("00", 16)) + "," +str(int("ff", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]" #blue
+    signal_colors["7"] = "[" + str(int("4b", 16)) + "," + str(int("00", 16)) + "," +str(int("82", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]" #violet
+    signal_colors["8"] = "[" + str(int("7f", 16)) + "," + str(int("7f", 16)) + "," +str(int("7f", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
+    signal_colors["9"] = "[" + str(int("ff", 16)) + "," + str(int("ff", 16)) + "," +str(int("ff", 16)) + "," +str(int(str(hmF2_colors), 16)) + "]"
     
 
 
@@ -228,6 +230,7 @@ def line_color(thmF2_km):
     Returns:
         str: A string in the format "rgba":[R,G,B,255].
     """
+    global hmF2_colors
     # Define altitude limits.
     hmF2_km = float(thmF2_km)
     #We'd like to get as much information out of our color scale 
@@ -236,18 +239,19 @@ def line_color(thmF2_km):
     #be the min and the last will be the max
     min_alt_km = colormin
     max_alt_km = colormax
-    print("colorscale " + str(colormin) + " " + str(colormax))
+    print("input " + str(hmF2_km) + "colorscale " + str(colormin) + " " + str(colormax))
     # Define the color scale as lists of [R, G, B, A].
     alt_color_scale = [
-        [0, 0, 0, 255],         # Black
-        [165, 42, 42, 255],      # Brown
-        [255, 0, 0, 255],        # Red
-        [255, 165, 0, 255],      # Orange
-        [255, 255, 0, 255],      # Yellow
-        [0, 128, 0, 255],        # Green
-        [0, 0, 255, 255],        # Blue
-        [238, 130, 238, 255],    # Violet
-        [255, 255, 255, 255]     # White
+        [0, 0, 0, hmF2_colors],       # Black
+        [165, 42, 42, hmF2_colors],    # Brown
+        [255, 0, 0, hmF2_colors],      # Red
+        [255, 165, 0, hmF2_colors],     # Orange
+        [255, 255, 0, hmF2_colors],     # Yellow
+        [0, 128, 0, hmF2_colors],      # Green
+        [0, 0, 255, hmF2_colors],      # Blue
+        [238, 130, 238, hmF2_colors],     # Violet
+        [128, 128, 128, hmF2_colors],    # Grey
+        [255, 255, 255, hmF2_colors]     # White
     ]
     n_colors = len(alt_color_scale)
 
@@ -259,8 +263,11 @@ def line_color(thmF2_km):
 
     # Normalize the altitude and map it to an index in the color scale.
     range_alt = max_alt_km - min_alt_km
+    print("range_alt " + str(range_alt))
     normalized = (hmF2_km - min_alt_km) / range_alt
-    idx = int(normalized * (n_colors - 1))
+    if normalized == 1:
+        normalized = 0.95
+    idx = int(normalized * (n_colors))
 
     rgba = alt_color_scale[idx]
     # Format the output string exactly as specified.
@@ -335,6 +342,7 @@ def get_czml(rows):
     from jinja2 import Template
     global colormin
     global colormax
+    global hmF2_colors
     map_minutes = []
     qso_ends = []
     f2_start = []
@@ -385,9 +393,15 @@ def get_czml(rows):
         f2_lat.append(mid_lat)
         f2_lng.append(mid_lng)
         
-            
+    if(rows[0]['hmF2Map'] == 1):
+        template_file = './plugins/templates/hmf2_iono_map_header.czml';
+        hmF2_colors = 255
+    else:
+        template_file = './plugins/templates/iono_map_header.czml';
+        hmF2_colors = 88
+    
 
-    with open('./plugins/templates/iono_map_header.czml') as f:
+    with open(template_file) as f:
         #tmpl = Template(f.read())
         tmpl = Environment(loader=FileSystemLoader("./plugins/templates")).from_string(f.read())
         tmpl.globals['line_color'] = line_color
