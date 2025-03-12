@@ -78,7 +78,7 @@
         <script>
           // Set your Cesium Ion access token.
           Cesium.Ion.defaultAccessToken =
-            'your_token';
+            'your_token_here';
 
           // Initialize the Cesium Viewer.
           var viewer = new Cesium.Viewer('cesiumContainer', {
@@ -125,6 +125,7 @@
               "hmF2 as dB, " +
               "hmF2*1000 as elev_tx, " +
               "hmF2 as edmaxalt, " +
+              "1 as hmF2Map, " +
               "NmF2 " +
               "from glotec " +
               "where \"tx_lat\" > " +
@@ -162,6 +163,7 @@
               "(sqrt(NmF2/.0124))/1000 as dB, " +
               "hmF2*1000 as elev_tx, " +
               "(sqrt(NmF2/.0124))/1000 as edmaxalt, " +
+              "0 as hmF2Map, " +
               "NmF2 " +
               "from glotec " +
               "where \"tx_lat\" > " +
@@ -182,7 +184,53 @@
               "and \"timestamp\" < '" +
               endTs +
               "' " +
+              "and NmF2 > 0 " + 
               "order by fof2 asc";
+            return sql;
+          }
+
+          function buildQSOSQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
+            var sql = `
+WITH qso AS (
+  SELECT *,
+         midpoint_lat(tx_lat, tx_lng, rx_lat, rx_lng) as ap_lat,
+         midpoint_lng(tx_lat, tx_lng, rx_lat, rx_lng) as ap_lng,  
+         haversine(tx_lat, tx_lng, rx_lat, rx_lng) as length
+  FROM [rm_toucans].rm_rnb_history_pres
+  WHERE timestamp BETWEEN '${startTs}' AND '${endTs}'
+),
+f2 AS (
+  SELECT *
+  FROM [glotec].glotec
+  WHERE timestamp BETWEEN '${startTs}' AND '${endTs}'
+)
+SELECT 
+  qso.timestamp,
+  strftime('%Y%m%d', qso.timestamp) as date,
+  strftime('%H%M', qso.timestamp) as time,
+  dB,
+  tx_rst,
+  qso.tx_lat,
+  qso.Spotter,
+  qso.tx_lng,
+  qso.rx_lat,
+  qso.rx_lng,
+  325 as ionosonde,
+  -5 as elev_tx,
+  0 as hmF2Map,
+  "US-4578" as park,
+  'KD0FNR' as call,
+  call,
+  (
+    SELECT max(f.hmF2)
+    FROM f2 AS f
+    WHERE f.latitude BETWEEN qso.ap_lat - 1.75 AND qso.ap_lat + 1.75
+      AND f.longitude BETWEEN qso.ap_lng - 2.6 AND qso.ap_lng + 2.6
+      AND (ABS(strftime('%s', f.timestamp) - strftime('%s', qso.timestamp)) / 60) < 6
+  ) AS f2m
+FROM qso
+ORDER BY timestamp ASC;
+`;
             return sql;
           }
 
@@ -238,7 +286,7 @@
       let maxVal = -Infinity;
       fof2DataSource.entities.values.forEach(entity => {
         if (entity._description && entity._description._value) {
-          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          const match = /f0f2\s+([\d\.]+)/i.exec(entity._description._value);
           if (match && !isNaN(match[1])) {
             const value = parseFloat(match[1]);
             if (value > maxVal) {
@@ -255,7 +303,7 @@
       let minVal = Infinity;
       fof2DataSource.entities.values.forEach(entity => {
         if (entity._description && entity._description._value) {
-          const match = /hmF2\s+([\d\.]+)/i.exec(entity._description._value);
+          const match = /f0f2\s+([\d\.]+)/i.exec(entity._description._value);
           if (match && !isNaN(match[1])) {
             const value = parseFloat(match[1]);
             if (value < minVal) {
@@ -387,16 +435,29 @@
               startTs,
               endTs
             );
+            var qsoSQL = buildQSOSQL(
+              minLat,
+              maxLat,
+              minLng,
+              maxLng,
+              startTs,
+              endTs
+            );
             var glotecUrl = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(glotecSQL);
             var fof2Url = baseUrl + "glotec.iczml?sql=" + encodeURIComponent(fof2SQL);
+            var qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
             console.debug("hmF2 " + glotecUrl);
             console.debug("fof2Url" + fof2Url);
+            console.debug("qsoUrl" + qsoUrl);
             // Remove existing glotec and fof2 data sources (if any).
             if (glotecDataSource) {
               viewer.dataSources.remove(glotecDataSource, true);
             }
             if (fof2DataSource) {
               viewer.dataSources.remove(fof2DataSource, true);
+            }
+            if(qsoDataSource){
+              viewer.dataSources.remove(qsoDataSource, true);
             }
 
             // Load new data sources.
@@ -423,23 +484,26 @@
             //var qso_url = 
             //  'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++301+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++timestamp+%3E+%272025-02-22%27%0D%0A++and+timestamp+%3C+%272025-02-23%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
             //2025_02_24 Seden
-            var qso_url = 
-              'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++324+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++dB+%3E100%0D%0A++and+timestamp+%3E+%272025-02-24%27%0D%0A++and+timestamp+%3C+%272025-02-25%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
-              Cesium.CzmlDataSource.load(qso_url).then(function (ds) {
+            //var qso_url = 
+            //  'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++324+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++dB+%3E100%0D%0A++and+timestamp+%3E+%272025-02-24%27%0D%0A++and+timestamp+%3C+%272025-02-25%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
+            //qso_url = 
+            //  'http://192.168.0.203/sam_datasette/_memory.czml?sql=WITH+qso+AS+%28%0D%0A++SELECT+*%2C%0D%0A++midpoint_lat%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lat%2C%0D%0A++midpoint_lng%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lng%2C++%0D%0A++haversine%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+length%0D%0A++FROM+%5Brm_toucans%5D.rm_rnb_history_pres%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27+%0D%0A%29%2C%0D%0Af2+AS+%28%0D%0A++SELECT+*%0D%0A++FROM+%5Bglotec%5D.glotec%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27%0D%0A%29%0D%0ASELECT+%0D%0A++qso.timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+qso.timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+qso.timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++tx_rst%2C%0D%0A++qso.tx_lat%2C%0D%0A++qso.Spotter%2C%0D%0A++qso.tx_lng%2C%0D%0A++qso.rx_lat%2C%0D%0A++qso.rx_lng%2C%0D%0A++325+as+ionosonde%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4578%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++call%2C%0D%0A++%28%0D%0A++++SELECT+max%28f.hmF2%29%0D%0A++++FROM+f2+AS+f%0D%0A++++where%0D%0A++++++f.latitude+BETWEEN+%0D%0A+++++++++qso.ap_lat+-+3.5%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lat+%2B+3.5%0D%0A++++++AND%0D%0A++++++f.longitude+BETWEEN+%0D%0A+++++++++qso.ap_lng+-+7%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lng+%2B+7%0D%0A+++++and+%28ABS%28strftime%28%27%25s%27%2C+f.timestamp%29+-+strftime%28%27%25s%27%2C+qso.timestamp%29%29%2F60%29+%3C+11%0D%0A++%29+AS+f2m%0D%0A%0D%0AFROM+qso%3B%0D%0A'
+
+              Cesium.CzmlDataSource.load(qsoUrl).then(function (ds) {
               qsoDataSource = ds;
               viewer.dataSources.add(qsoDataSource);
             });
           }
 
           // Initially load layers with default parameters.
-          updateMap(
-            defaultMinLat,
-            defaultMaxLat,
-            defaultMinLng,
-            defaultMaxLng,
-            defaultStartTs,
-            defaultEndTs
-          );
+          //updateMap(
+          //  defaultMinLat,
+          //  defaultMaxLat,
+          //  defaultMinLng,
+          //  defaultMaxLng,
+          //  defaultStartTs,
+          //  defaultEndTs
+          //);
 
           // Create a layer control panel with two checkboxes.
           var layerPanel = document.createElement("div");
