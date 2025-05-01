@@ -78,8 +78,9 @@
         <script>
           // Set your Cesium Ion access token.
           Cesium.Ion.defaultAccessToken =
-            'your_token_here';
-
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmOTdmNDY0OS1jN2Y5LTQ2NDgtYjQ5ZC0xODNkZGVkMjYxYzYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3MDc3NDAxNzF9.X2gIarkLPYbzkgRzxqSaMuLRcttYMFX7zOPPl86fZVE';
+          var qsoUrl = "";
+          var newHeight = 22;
           // Initialize the Cesium Viewer.
           var viewer = new Cesium.Viewer('cesiumContainer', {
             terrain: Cesium.Terrain.fromWorldTerrain({
@@ -189,7 +190,7 @@
             return sql;
           }
 
-          function buildQSOSQL(minLat, maxLat, minLng, maxLng, startTs, endTs) {
+          function buildQSOSQL(minLat, maxLat, minLng, maxLng, startTs, endTs, elev) {
             var sql = `
 WITH qso AS (
   SELECT *,
@@ -216,7 +217,7 @@ SELECT
   qso.rx_lat,
   qso.rx_lng,
   325 as ionosonde,
-  21.96189880371094 as elev_tx,
+  '${elev}' as elev_tx,
   0 as hmF2Map,
   "US-4578" as park,
   'KD0FNR' as call,
@@ -470,11 +471,12 @@ ORDER BY timestamp ASC;
               minLng,
               maxLng,
               startTs,
-              endTs
+              endTs,
+              newHeight
             );
             var glotecUrl = baseUrl + "glotec_slice.iczml?sql=" + encodeURIComponent(glotecSQL);
             var fof2Url = baseUrl + "glotec_slice.iczml?sql=" + encodeURIComponent(fof2SQL);
-            var qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
+            qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
             console.debug("hmF2 " + glotecUrl);
             console.debug("fof2Url" + fof2Url);
             console.debug("qsoUrl" + qsoUrl);
@@ -515,8 +517,8 @@ ORDER BY timestamp ASC;
             //2025_02_24 Seden
             //var qso_url = 
             //  'http://192.168.0.203/sam_datasette/rm_toucans.czml?sql=select%0D%0A++rowid%2C%0D%0A++id%2C%0D%0A++tx_lng%2C%0D%0A++tx_lat%2C%0D%0A++rx_lng%2C%0D%0A++rx_lat%2C%0D%0A++timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++frequency%2C%0D%0A++Spotter%2C%0D%0A++Country%2C%0D%0A++State%2C%0D%0A++County%2C%0D%0A++City%2C%0D%0A++QSL_Sent%2C%0D%0A++QSL_Rx%2C%0D%0A++QSL_link%2C%0D%0A++QSL_rx_link%2C%0D%0A++tx_rst%2C%0D%0A++325+as+ionosonde%2C%0D%0A++325+as+edmaxalt%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4571%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++p2p_s2%2C%0D%0A++324+as+f2m%2C%0D%0A++call%0D%0Afrom%0D%0A++rm_rnb_history_pres%0D%0Awhere%0D%0A++dB+%3E100%0D%0A++and+timestamp+%3E+%272025-02-24%27%0D%0A++and+timestamp+%3C+%272025-02-25%27%0D%0Aorder+by%0D%0A++timestamp%0D%0A'
-            qso_url = 
-              'http://192.168.0.203/sam_datasette/_memory.czml?sql=WITH+qso+AS+%28%0D%0A++SELECT+*%2C%0D%0A++midpoint_lat%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lat%2C%0D%0A++midpoint_lng%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lng%2C++%0D%0A++haversine%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+length%0D%0A++FROM+%5Brm_toucans%5D.rm_rnb_history_pres%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27+%0D%0A%29%2C%0D%0Af2+AS+%28%0D%0A++SELECT+*%0D%0A++FROM+%5Bglotec%5D.glotec%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27%0D%0A%29%0D%0ASELECT+%0D%0A++qso.timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+qso.timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+qso.timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++tx_rst%2C%0D%0A++qso.tx_lat%2C%0D%0A++qso.Spotter%2C%0D%0A++qso.tx_lng%2C%0D%0A++qso.rx_lat%2C%0D%0A++qso.rx_lng%2C%0D%0A++325+as+ionosonde%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4578%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++call%2C%0D%0A++%28%0D%0A++++SELECT+max%28f.hmF2%29%0D%0A++++FROM+f2+AS+f%0D%0A++++where%0D%0A++++++f.latitude+BETWEEN+%0D%0A+++++++++qso.ap_lat+-+3.5%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lat+%2B+3.5%0D%0A++++++AND%0D%0A++++++f.longitude+BETWEEN+%0D%0A+++++++++qso.ap_lng+-+7%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lng+%2B+7%0D%0A+++++and+%28ABS%28strftime%28%27%25s%27%2C+f.timestamp%29+-+strftime%28%27%25s%27%2C+qso.timestamp%29%29%2F60%29+%3C+11%0D%0A++%29+AS+f2m%0D%0A%0D%0AFROM+qso%3B%0D%0A'
+            //qso_url = 
+            //  'http://192.168.0.203/sam_datasette/_memory.czml?sql=WITH+qso+AS+%28%0D%0A++SELECT+*%2C%0D%0A++midpoint_lat%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lat%2C%0D%0A++midpoint_lng%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+ap_lng%2C++%0D%0A++haversine%28tx_lat%2C+tx_lng%2C+rx_lat%2C+rx_lng%29+as+length%0D%0A++FROM+%5Brm_toucans%5D.rm_rnb_history_pres%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27+%0D%0A%29%2C%0D%0Af2+AS+%28%0D%0A++SELECT+*%0D%0A++FROM+%5Bglotec%5D.glotec%0D%0A++WHERE+timestamp+BETWEEN+%272025-03-10T00%3A00%3A00Z%27+AND+%272025-03-10T23%3A59%3A59Z%27%0D%0A%29%0D%0ASELECT+%0D%0A++qso.timestamp%2C%0D%0A++strftime%28%27%25Y%25m%25d%27%2C+qso.timestamp%29+as+date%2C%0D%0A++strftime%28%27%25H%25M%27%2C+qso.timestamp%29+as+time%2C%0D%0A++dB%2C%0D%0A++tx_rst%2C%0D%0A++qso.tx_lat%2C%0D%0A++qso.Spotter%2C%0D%0A++qso.tx_lng%2C%0D%0A++qso.rx_lat%2C%0D%0A++qso.rx_lng%2C%0D%0A++325+as+ionosonde%2C%0D%0A++-5+as+elev_tx%2C%0D%0A++%22US-4578%22+as+park%2C%0D%0A++%27KD0FNR%27+as+call%2C%0D%0A++call%2C%0D%0A++%28%0D%0A++++SELECT+max%28f.hmF2%29%0D%0A++++FROM+f2+AS+f%0D%0A++++where%0D%0A++++++f.latitude+BETWEEN+%0D%0A+++++++++qso.ap_lat+-+3.5%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lat+%2B+3.5%0D%0A++++++AND%0D%0A++++++f.longitude+BETWEEN+%0D%0A+++++++++qso.ap_lng+-+7%0D%0A+++++++++AND+%0D%0A+++++++++qso.ap_lng+%2B+7%0D%0A+++++and+%28ABS%28strftime%28%27%25s%27%2C+f.timestamp%29+-+strftime%28%27%25s%27%2C+qso.timestamp%29%29%2F60%29+%3C+11%0D%0A++%29+AS+f2m%0D%0A%0D%0AFROM+qso%3B%0D%0A'
             //qsoUrl = 'https://raw.githubusercontent.com/hcarter333/rm-rbn-history/refs/heads/main/maps/2025_04_05_simul_sota.czml';
             //qsoUrl = 'https://raw.githubusercontent.com/hcarter333/rm-rbn-history/refs/heads/main/maps/2025_04_03_angel_scoutI.czml';
               Cesium.CzmlDataSource.load(qsoUrl).then(function (ds) {
@@ -573,8 +575,124 @@ ORDER BY timestamp ASC;
             '<label>End Timestamp: <input id="endTs" type="text" value="' +
             defaultEndTs +
             '"></label>' +
-            '<button id="updateBtn">Update Map</button>';
+            '<button id="updateBtn">Update Map</button>' + 
+            '<button id="downloadQsoButton" >Download QSO CZML</button>';
           document.body.appendChild(updatePanel);
+
+
+// --- Add QTH Elevation input and button ---
+var qthDiv = document.createElement("div");
+qthDiv.style.marginTop = "8px";
+qthDiv.innerHTML =
+  '<label style="display:inline-block; margin-right:4px;">' +
+    'qth elevation: <input id="qthElev" type="text" value="0" style="width:60px;">' +
+  '</label>' +
+  '<button id="updateEle">update ele</button>';
+updatePanel.appendChild(qthDiv);
+var eleNowLabel = document.createElement("div");
+eleNowLabel.id = "eleNow";
+eleNowLabel.style.marginTop = "4px";
+eleNowLabel.textContent = "ele now: ";
+updatePanel.appendChild(eleNowLabel);
+
+// --- Wire up the update elevation button ---
+var fileHeight = "";
+var fndFileHeight = 0;
+var finalHeight = "";
+document.getElementById("updateEle").addEventListener("click", function() {
+  // Parse the elevation offset (can be negative)
+  const delta = parseFloat(document.getElementById("qthElev").value);
+  if (isNaN(delta)) {
+    console.error("Invalid elevation offset");
+    return;
+  }
+  qsoDataSource.entities.values.forEach(entity => {
+    if (
+      entity.id &&
+      entity.id.includes("f2") &&
+      !entity.id.includes("f2down") &&
+      entity.polyline &&
+      entity.polyline.positions
+    ) {
+      // 1) pull out the old Cartesian3 positions
+      const positions = entity.polyline.positions.getValue();
+
+      if (positions.length > 0) {
+        // 2) convert the *first* point back to Cartographic (lat, lon, height)
+        const oldCarto = Cesium.Cartographic.fromCartesian(positions[0]);
+
+        // 3) compute a new height
+        newHeight = oldCarto.height + delta;
+        finalHeight = newHeight.toString();
+
+        if(fndFileHeight == 0){
+            fileHeight = oldCarto.height;
+            fndFileHeight = 1;
+        }
+
+        // 4) rebuild just that first point in Cartesian using the original lat/lon
+        const newCartesian = Cesium.Ellipsoid.WGS84.cartographicToCartesian(
+          new Cesium.Cartographic(oldCarto.longitude, oldCarto.latitude, newHeight)
+        );
+        positions[0] = newCartesian;
+
+        // 5) re‐assign the array so Cesium notices the change
+        entity.polyline.positions = new Cesium.ConstantProperty(positions);
+      }
+    }
+  });
+
+  // Update the "ele now" label
+  if (newHeight !== undefined) {
+    document.getElementById("eleNow").textContent =
+      "ele now: " + newHeight + " m";
+  }
+
+  // re‐draw immediately
+  viewer.scene.requestRender();
+});
+
+document.getElementById('downloadQsoButton').addEventListener('click', async () => {
+  try {
+    // Fetch the original CZML text
+    var minLat = parseFloat(document.getElementById("minLat").value);
+    var maxLat = parseFloat(document.getElementById("maxLat").value);
+    var minLng = parseFloat(document.getElementById("minLng").value);
+    var maxLng = parseFloat(document.getElementById("maxLng").value);
+    var startTs = document.getElementById("startTs").value;
+    var endTs = document.getElementById("endTs").value;
+
+    var qsoSQL = buildQSOSQL(
+      minLat,
+      maxLat,
+      minLng,
+      maxLng,
+      startTs,
+      endTs,
+      newHeight
+    );
+    qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
+
+    // Fetch the CZML text
+    // Create a link and click it to download
+    const a = document.createElement('a');
+    a.href = qsoUrl;
+    a.download = 'qso.czml';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Release the object URL
+    //URL.revokeObjectURL(blobUrl);
+  } catch (e) {
+    console.error('Failed to download QSO CZML:', e);
+    alert('Error downloading QSO data: ' + e.message);
+  }
+});
+
+
+
+
          // Create a link element for returning to the current map settings.
          var mapLink = document.createElement("a");
          mapLink.id = "mapLink";
