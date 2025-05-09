@@ -30,6 +30,9 @@ It has four modes:
      - The script accepts two timestamps (formatted as 2025-02-03T00:45:00Z) defining a date range.
        It deletes all rows in the glotec table whose timestamp is within that range, and then replaces them
        by processing the corresponding files from the NOAA listing (including the related NmF2 values).
+  6. -laglotec mode:
+     - The script retrieves only the most recent glotec entry from the listing and creates a new glotec database
+       containing only the records from that most recent GeoJSON file.
 """
 
 import sys
@@ -189,7 +192,7 @@ def dump_all_data():
 
 # -------------------------
 # Function for updating the database from geojson entries after a given timestamp.
-def update_db(timestamp_input):
+def update_db(timestamp_input, timestamp_end):
     """
     Accepts a timestamp string in ISO 8601 format (e.g., 2025-02-03T00:45:00Z). It fetches all
     entries from the listing whose time_tag is later than the provided timestamp and appends
@@ -197,10 +200,11 @@ def update_db(timestamp_input):
     """
     try:
         update_dt = datetime.strptime(timestamp_input, "%Y-%m-%dT%H:%M:%SZ")
+        update_end = datetime.strptime(timestamp_end, "%Y-%m-%dT%H:%M:%SZ")
     except Exception as e:
         print(f"Error parsing provided timestamp {timestamp_input}: {e}")
         sys.exit(1)
-
+    print("about to update")
     print(f"Updating database with entries later than {timestamp_input}.")
 
     try:
@@ -215,12 +219,16 @@ def update_db(timestamp_input):
     for entry in full_listing:
         try:
             file_dt = datetime.strptime(entry["time_tag"], "%Y-%m-%dT%H:%M:%SZ")
+            #print(entry)
         except Exception as e:
             print(f"Error parsing time_tag {entry.get('time_tag')}: {e}")
             continue
-
-        if file_dt > update_dt:
+        print()
+        if file_dt > update_dt and update_dt == update_end:
             filtered_entries.append(entry)
+        elif file_dt > update_dt and file_dt < update_end:
+            filtered_entries.append(entry)
+
 
     if not filtered_entries:
         print("No new entries found after the provided timestamp.")
@@ -305,6 +313,31 @@ def update_db(timestamp_input):
 
     print(f"Updated database with {total_new_rows} new rows.")
 
+def update_db_to_latest():
+    """
+    Look up the maximum timestamp in glotec.db, then call update_db()
+    with that timestamp so that only entries later than that are fetched.
+    """
+    db_filename = "glotec.db"
+    try:
+        conn = sqlite3.connect(db_filename)
+        cur = conn.cursor()
+        # find max timestamp
+        cur.execute('SELECT MAX(timestamp) FROM glotec;')
+        row = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        print(f"Error opening or querying {db_filename}: {e}")
+        sys.exit(1)
+
+    if not row or row[0] is None:
+        print("No existing timestamp found in glotec.db; use -alldb or -updatedb instead.")
+        sys.exit(1)
+
+    latest_timestamp = row[0]
+    print(f"Latest timestamp in database is {latest_timestamp}. Updating from that point forward.")
+    # now call the existing update_db function
+    update_db(latest_timestamp, latest_timestamp)
 
 # -------------------------
 # Function for updating the database from a netCDF4 file.
@@ -540,9 +573,218 @@ def nm_patch(start_timestamp, end_timestamp):
 
 
 # -------------------------
+# New function for -laglotec mode.
+def latest_glotec():
+    """
+    Retrieves only the most recent glotec entry from the listing and creates a new glotec database
+    containing only the records from that single entry.
+    """
+    print("Running in -laglotec mode: creating new glotec database from the most recent entry.")
+    try:
+        r = requests.get(LISTING_URL)
+        r.raise_for_status()
+        listing = r.json()
+    except Exception as e:
+        print(f"Error downloading listing JSON: {e}")
+        sys.exit(1)
+
+    if not listing:
+        print("No entries found in the listing.")
+        sys.exit(1)
+
+    # Find the entry with the maximum (most recent) time_tag.
+    try:
+        for entry in listing:
+            entry["time_dt"] = datetime.strptime(entry["time_tag"], "%Y-%m-%dT%H:%M:%SZ")
+    except Exception as e:
+        print(f"Error parsing time_tag in listing: {e}")
+        sys.exit(1)
+
+    latest_entry = max(listing, key=lambda e: e["time_dt"])
+    print(f"Most recent entry found: {latest_entry['time_tag']}")
+
+    # Create (or overwrite) the glotec database.
+    db_filename = "glotec.db"
+    try:
+        conn = sqlite3.connect(db_filename)
+        cur = conn.cursor()
+        cur.execute("DROP TABLE IF EXISTS glotec;")
+        cur.execute("""
+            CREATE TABLE glotec (
+                uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                longitude REAL,
+                latitude REAL,
+                hmF2 INTEGER,
+                NmF2 REAL,
+                quality_flag TEXT
+            )
+        """)
+        conn.commit()
+    except Exception as e:
+        print(f"Error setting up new SQLite database {db_filename}: {e}")
+        sys.exit(1)
+
+    # Process only the latest entry.
+    timestamp_str = latest_entry["time_tag"]
+    rel_url = latest_entry.get("url")
+    if not rel_url:
+        print("The most recent entry has no 'url' field.")
+        conn.close()
+        sys.exit(1)
+    full_url = BASE_URL + rel_url
+    print("Processing most recent file: " + full_url)
+
+    try:
+        r = requests.get(full_url)
+        r.raise_for_status()
+        geojson_data = r.json()
+    except Exception as e:
+        print(f"Error downloading GeoJSON from {full_url}: {e}")
+        conn.close()
+        sys.exit(1)
+
+    total_rows = 0
+    features = geojson_data.get("features", [])
+    for i, feature in enumerate(features):
+        properties = feature.get("properties", {})
+        geometry = feature.get("geometry", {})
+
+        if geometry.get("type") != "Point":
+            print(f"Skipping feature {i} in file {rel_url}: geometry type is not 'Point'.")
+            continue
+
+        coords = geometry.get("coordinates", [])
+        if len(coords) < 2:
+            print(f"Skipping feature {i} in file {rel_url}: insufficient coordinate data.")
+            continue
+
+        longitude, latitude = coords[0], coords[1]
+
+        hmF2 = properties.get("hmF2")
+        NmF2 = properties.get("NmF2")
+        quality_flag = properties.get("quality_flag")
+
+        try:
+            hmF2 = math.trunc(float(hmF2))
+        except Exception:
+            print("hmF2 failed " + str(hmF2))
+            hmF2 = None
+
+        try:
+            NmF2 = float(NmF2) if NmF2 is not None else None
+        except Exception:
+            print("NmF2 conversion failed " + str(NmF2))
+            NmF2 = None
+
+        try:
+            cur.execute("""
+                INSERT INTO glotec (timestamp, longitude, latitude, hmF2, NmF2, quality_flag)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (timestamp_str, longitude, latitude, hmF2, NmF2, quality_flag))
+            total_rows += 1
+        except Exception as e:
+            print(f"Error inserting row into database: {e}")
+            continue
+
+    conn.commit()
+    conn.close()
+    print(f"Created new glotec database with {total_rows} rows from the most recent entry.")
+
+def slice_databases(start_timestamp, end_timestamp):
+    """
+    Creates new database files that contain all rows from the original databases between 
+    and including start_timestamp and end_timestamp. The new files are:
+      - glotec_slice.db, which will have the same table name "glotec" as the original glotec.db.
+      - rm_toucans_slice.db, which will have the same table name "rm_rnb_history_pres" as the original rm_toucans.db.
+    """
+    import sqlite3
+
+    # Slice glotec.db -> glotec_slice.db
+    in_db = "glotec.db"
+    out_db = "glotec_slice.db"
+    try:
+        conn_in = sqlite3.connect(in_db)
+        cur_in = conn_in.cursor()
+        cur_in.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='glotec'")
+        schema_row = cur_in.fetchone()
+        if schema_row is None:
+            print(f"Error: Table 'glotec' not found in {in_db}.")
+            sys.exit(1)
+        create_sql = schema_row[0]
+    except Exception as e:
+        print(f"Error reading schema from {in_db}: {e}")
+        sys.exit(1)
+    try:
+        conn_out = sqlite3.connect(out_db)
+        cur_out = conn_out.cursor()
+        cur_out.execute("DROP TABLE IF EXISTS glotec")
+        cur_out.execute(create_sql)
+        # Copy rows between the timestamps
+        cur_in.execute("SELECT * FROM glotec WHERE timestamp >= ? AND timestamp <= ?", (start_timestamp, end_timestamp))
+        rows = cur_in.fetchall()
+        for row in rows:
+            placeholders = ",".join(["?"] * len(row))
+            cur_out.execute("INSERT INTO glotec VALUES (" + placeholders + ")", row)
+        conn_out.commit()
+        conn_out.close()
+        conn_in.close()
+        print(f"Sliced {len(rows)} rows from {in_db} into {out_db}.")
+    except Exception as e:
+        print("Error slicing glotec database:", e)
+        sys.exit(1)
+
+    # Slice QSO database.
+    # We assume the original QSO database is in rm_toucans.db with table rm_rnb_history_pres.
+    in_db_qso = "rm_toucans.db"
+    # Changed output file name to rm_toucans_slice.db to preserve original name inside.
+    out_db_qso = "rm_toucans_slice.db"
+    try:
+        conn_in_qso = sqlite3.connect(in_db_qso)
+        cur_in_qso = conn_in_qso.cursor()
+        cur_in_qso.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='rm_rnb_history_pres'")
+        schema_row_qso = cur_in_qso.fetchone()
+        if schema_row_qso is None:
+            print(f"Error: Table 'rm_rnb_history_pres' not found in {in_db_qso}.")
+            sys.exit(1)
+        create_sql_qso = schema_row_qso[0]
+    except Exception as e:
+        print(f"Error reading schema from {in_db_qso}: {e}")
+        sys.exit(1)
+    try:
+        conn_out_qso = sqlite3.connect(out_db_qso)
+        cur_out_qso = conn_out_qso.cursor()
+        cur_out_qso.execute("DROP TABLE IF EXISTS rm_rnb_history_pres")
+        cur_out_qso.execute(create_sql_qso)
+        # Copy rows between the timestamps.
+        cur_in_qso.execute("SELECT * FROM rm_rnb_history_pres WHERE timestamp >= ? AND timestamp <= ?", (start_timestamp, end_timestamp))
+        rows_qso = cur_in_qso.fetchall()
+        for row in rows_qso:
+            placeholders = ",".join(["?"] * len(row))
+            cur_out_qso.execute("INSERT INTO rm_rnb_history_pres VALUES (" + placeholders + ")", row)
+        conn_out_qso.commit()
+        conn_out_qso.close()
+        conn_in_qso.close()
+        print(f"Sliced {len(rows_qso)} rows from {in_db_qso} into {out_db_qso}.")
+    except Exception as e:
+        print("Error slicing QSO database:", e)
+        sys.exit(1)
+
+# -------------------------
 # Main script execution.
 if "-alldb" in sys.argv:
     dump_all_data()
+    sys.exit(0)
+
+if "-slice" in sys.argv:
+    try:
+        idx = sys.argv.index("-slice")
+        start_slice = sys.argv[idx + 1]
+        end_slice = sys.argv[idx + 2]
+    except IndexError:
+        print("Error: -slice option requires two timestamp arguments (e.g., 2025-03-10T00:00:00Z 2025-03-10T23:59:59Z)")
+        sys.exit(1)
+    slice_databases(start_slice, end_slice)
     sys.exit(0)
 
 if "-updatedb" in sys.argv:
@@ -552,7 +794,15 @@ if "-updatedb" in sys.argv:
     except IndexError:
         print("Error: -updatedb option requires a timestamp argument formatted as 2025-02-03T00:45:00Z")
         sys.exit(1)
-    update_db(timestamp_arg)
+    try:
+        timestamp_end_arg = sys.argv[idx+2]
+    except IndexError:
+        timestamp_end_arg = timestamp_arg
+    update_db(timestamp_arg, timestamp_end_arg)
+    sys.exit(0)
+
+if "-updatelatest" in sys.argv:
+    update_db_to_latest()
     sys.exit(0)
 
 if "-appnd_ncd" in sys.argv:
@@ -574,6 +824,10 @@ if "-nmpatch" in sys.argv:
         print("Error: -nmpatch option requires two timestamp arguments formatted as 2025-02-03T00:45:00Z")
         sys.exit(1)
     nm_patch(start_patch, end_patch)
+    sys.exit(0)
+
+if "-laglotec" in sys.argv:
+    latest_glotec()
     sys.exit(0)
 
 # --- Normal CZML mode below ---
@@ -618,15 +872,15 @@ overall_end = max(end_times)
 clock_interval = f"{overall_start.strftime('%Y-%m-%dT%H:%M:%SZ')}/{overall_end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
 color_scale = [
-    {"rgba": [0, 0, 0, 255]},           # Black
-    {"rgba": [165, 42, 42, 255]},         # Brown
-    {"rgba": [255, 0, 0, 255]},           # Red
-    {"rgba": [255, 165, 0, 255]},         # Orange
-    {"rgba": [255, 255, 0, 255]},         # Yellow
-    {"rgba": [0, 128, 0, 255]},           # Green
-    {"rgba": [0, 0, 255, 255]},           # Blue
-    {"rgba": [238, 130, 238, 255]},       # Violet
-    {"rgba": [255, 255, 255, 255]}        # White
+    {"rgba": [0, 0, 0, 255]},
+    {"rgba": [165, 42, 42, 255]},
+    {"rgba": [255, 0, 0, 255]},
+    {"rgba": [255, 165, 0, 255]},
+    {"rgba": [255, 255, 0, 255]},
+    {"rgba": [0, 128, 0, 255]},
+    {"rgba": [0, 0, 255, 255]},
+    {"rgba": [238, 130, 238, 255]},
+    {"rgba": [255, 255, 255, 255]}
 ]
 n_colors = len(color_scale)
 
