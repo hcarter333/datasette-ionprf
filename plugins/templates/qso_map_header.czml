@@ -5,7 +5,7 @@
     "version":"1.0",
     "clock":{
       "interval":"{{ MinTime }}Z/{{ MaxTime }}Z",
-      "currentTime":"{{ MinTime }}",
+      "currentTime":"{{ MinTime }}Z",
       "multiplier":60,
       "range":"LOOP_STOP",
       "step":"SYSTEM_CLOCK_MULTIPLIER"
@@ -60,6 +60,7 @@
           }
       ],
       
+      "arcType": "NONE",
       "width":5,
       "relativeToGround":true
     }
@@ -87,6 +88,7 @@
           }
       ],
       
+      "arcType": "NONE",
       "width":5,
       "relativeToGround":true
     }
@@ -114,6 +116,7 @@
           }
       ],
       
+      "arcType": "NONE",
       "width":5,
       "relativeToGround":true
     }
@@ -141,6 +144,7 @@
           }
       ],
       
+      "arcType": "NONE",
       "width":5,
       "clampToGround":false
     }
