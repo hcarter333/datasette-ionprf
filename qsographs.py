@@ -1,3 +1,4 @@
+#Generate evenly spaced lat/lon points along a great circle path
 import math
 
 def great_circle_points(lat1, lon1, lat2, lon2, segments=100):
