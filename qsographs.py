@@ -2,7 +2,7 @@
 """
 qso_path_graph.py
 
-Plot GloTEC fof2 along a great-circle path.
+Plot GloTEC fof2 and hmF2 along a great-circle path.
 
 Usage:
   python qso_path_graph.py lon1 lat1 lon2 lat2 YYYY-MM-DDTHH:MM:SSZ
@@ -165,7 +165,7 @@ def main(argv):
     for lon_c, lat_c, frac in path:
         fof2 = fof2_map.get((lon_c, lat_c))
         hmf2 = hmf2_map.get((lon_c, lat_c))
-        print("f " + str(frac) + " deg " + str(frac*tot_deg) + " lng " + str(lon_c) + " lat " + str(lat_c) + " fof2 " + str(fof2) + " hmf2 " + str(hmf2))
+        #print("f " + str(frac) + " deg " + str(frac*tot_deg) + " lng " + str(lon_c) + " lat " + str(lat_c) + " fof2 " + str(fof2) + " hmf2 " + str(hmf2))
         if fof2 is not None:
             xs.append(frac * tot_deg)
             ys.append(fof2)
