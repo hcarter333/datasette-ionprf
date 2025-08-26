@@ -74,6 +74,26 @@ def collapse_cells(samples):
         if cell!=last:
             last=cell; yield *cell, f
 
+
+# ---------------------------------------------------------------------------
+# Lightweight public helpers
+# ---------------------------------------------------------------------------
+
+def great_circle_points(lat1, lon1, lat2, lon2, segments=100):
+    """Yield (lat, lon) pairs along a great-circle path."""
+    for lat, lon, _ in great_circle(lat1, lon1, lat2, lon2, n=segments):
+        yield lat, lon
+
+
+def filter_redundant(points):
+    """Drop consecutive points that land in the same 5°×2.5° cell."""
+    last_cell = None
+    for lat, lon in points:
+        cell = (math.floor(lat / 5.0), math.floor(lon / 2.5))
+        if cell != last_cell:
+            last_cell = cell
+            yield (lat, lon)
+
 # ---------------------------------------------------------------------------
 # Public plotting API
 # ---------------------------------------------------------------------------

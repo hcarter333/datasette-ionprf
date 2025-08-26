@@ -2,7 +2,7 @@
 import math
 import pytest
 
-from qsographs import great_circle_points, filter_redundant
+from glotec_path_plot import great_circle_points, filter_redundant
 
 # --- great_circle_points tests ---------------------------------------------
 
