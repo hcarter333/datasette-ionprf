@@ -14,7 +14,7 @@ Usage:
 
 import sys, json, urllib.request, argparse
 from pathlib import Path
-from glotec_path_plot import plot_qso   # library above
+from qso_graph_plot import plot_qso   # library above
 
 # ---------------------------------------------------------------------------
 
