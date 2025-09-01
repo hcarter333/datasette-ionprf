@@ -70,7 +70,7 @@ def fetch_csv(start: str, end: str) -> list[tuple[str, str, str]]:
     """
     sql = SQL_TEMPLATE.format(start=start, end=end)
     url = (
-        "http://192.168.0.203/sam_datasette/_memory.csv?"
+        "http://127.0.0.1:8001/_memory.csv?"
         "sql=" + urllib.parse.quote_plus(sql) +
         "&_size=max"
     )

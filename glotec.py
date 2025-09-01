@@ -192,11 +192,13 @@ def dump_all_data():
 
 # -------------------------
 # Function for updating the database from geojson entries after a given timestamp.
+# -------------------------
+# Function for updating the database from geojson entries after a given timestamp.
 def update_db(timestamp_input, timestamp_end):
     """
     Accepts a timestamp string in ISO 8601 format (e.g., 2025-02-03T00:45:00Z). It fetches all
     entries from the listing whose time_tag is later than the provided timestamp and appends
-    their data to the existing glotec.db database.
+    their data to the (possibly newly-created) glotec.db database.
     """
     try:
         update_dt = datetime.strptime(timestamp_input, "%Y-%m-%dT%H:%M:%SZ")
@@ -204,9 +206,11 @@ def update_db(timestamp_input, timestamp_end):
     except Exception as e:
         print(f"Error parsing provided timestamp {timestamp_input}: {e}")
         sys.exit(1)
+
     print("about to update")
     print(f"Updating database with entries later than {timestamp_input}.")
 
+    # Get the listing
     try:
         r = requests.get(LISTING_URL)
         r.raise_for_status()
@@ -215,20 +219,20 @@ def update_db(timestamp_input, timestamp_end):
         print(f"Error downloading listing JSON: {e}")
         sys.exit(1)
 
+    # Filter entries by time range
     filtered_entries = []
     for entry in full_listing:
         try:
             file_dt = datetime.strptime(entry["time_tag"], "%Y-%m-%dT%H:%M:%SZ")
-            #print(entry)
         except Exception as e:
             print(f"Error parsing time_tag {entry.get('time_tag')}: {e}")
             continue
-        print()
+
+        # same logic you had before
         if file_dt > update_dt and update_dt == update_end:
             filtered_entries.append(entry)
         elif file_dt > update_dt and file_dt < update_end:
             filtered_entries.append(entry)
-
 
     if not filtered_entries:
         print("No new entries found after the provided timestamp.")
@@ -237,11 +241,25 @@ def update_db(timestamp_input, timestamp_end):
     print(f"Found {len(filtered_entries)} new entries to process.")
 
     db_filename = "glotec.db"
+
+    # OPEN (creates file if missing) AND ENSURE TABLE EXISTS — matches other modes
     try:
         conn = sqlite3.connect(db_filename)
         cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS glotec (
+                uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                longitude REAL,
+                latitude REAL,
+                hmF2 INTEGER,
+                NmF2 REAL,
+                quality_flag TEXT
+            )
+        """)
+        conn.commit()
     except Exception as e:
-        print(f"Error opening SQLite database {db_filename}: {e}")
+        print(f"Error setting up SQLite database {db_filename}: {e}")
         sys.exit(1)
 
     total_new_rows = 0
@@ -301,12 +319,10 @@ def update_db(timestamp_input, timestamp_end):
                     INSERT INTO glotec (timestamp, longitude, latitude, hmF2, NmF2, quality_flag)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (timestamp_str, longitude, latitude, hmF2, NmF2, quality_flag))
-                uid = cur.lastrowid
+                total_new_rows += 1
             except Exception as e:
                 print(f"Error inserting row into database: {e}")
                 continue
-
-            total_new_rows += 1
 
     conn.commit()
     conn.close()
@@ -572,6 +588,73 @@ def nm_patch(start_timestamp, end_timestamp):
     print(f"NM patch complete: {total_new_rows} new rows inserted for entries between {start_timestamp} and {end_timestamp}.")
 
 
+def outing_glotec(csv_url):
+    """
+    Reads a CSV-like file from csv_url where QSOs start at line 5 (1-indexed),
+    with lines formatted like: callsign,YYYY/MM/DD HH:MM:SS,RSTsent,RSTrcvd
+
+    It computes:
+      begin = 10 minutes before first QSO timestamp
+      end   = 10 minutes after last  QSO timestamp
+
+    and then invokes update_db(begin, end).
+    """
+    try:
+        r = requests.get(csv_url)
+        r.raise_for_status()
+        text = r.text
+    except Exception as e:
+        print(f"Error downloading QSO file from {csv_url}: {e}")
+        sys.exit(1)
+
+    lines = text.splitlines()
+    if len(lines) < 5:
+        print("File has fewer than 5 lines; no QSO lines found.")
+        sys.exit(1)
+
+    # QSOs start at line 5 (index 4)
+    qso_lines = [ln.strip() for ln in lines[4:] if ln.strip()]
+
+    first_dt = None
+    last_dt = None
+
+    for ln in qso_lines:
+        # Expect at least "call,timestamp,..."
+        parts = [p.strip() for p in ln.split(",")]
+        if len(parts) < 2:
+            continue
+        ts_str = parts[1]
+        try:
+            # Interpret QSO timestamps as UTC
+            dt = datetime.strptime(ts_str, "%Y/%m/%d %H:%M:%S")
+        except ValueError:
+            # Skip non-QSO or malformed lines
+            continue
+
+        if first_dt is None or dt < first_dt:
+            first_dt = dt
+        if last_dt is None or dt > last_dt:
+            last_dt = dt
+
+    if first_dt is None or last_dt is None:
+        print("No valid QSO timestamps found.")
+        sys.exit(1)
+
+    begin_dt = first_dt - timedelta(minutes=10)
+    end_dt   = last_dt + timedelta(minutes=10)
+
+    begin_iso = begin_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_iso   = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    print(f"outing_glotec → computed time window:")
+    print(f"  first QSO: {first_dt}  last QSO: {last_dt}")
+    print(f"  begin:     {begin_iso}")
+    print(f"  end:       {end_iso}")
+
+    # Equivalent to calling: glotec.py -updatedb <begin_iso> <end_iso>
+    update_db(begin_iso, end_iso)
+
+
 # -------------------------
 # New function for -laglotec mode.
 def latest_glotec():
@@ -775,6 +858,17 @@ def slice_databases(start_timestamp, end_timestamp):
 if "-alldb" in sys.argv:
     dump_all_data()
     sys.exit(0)
+
+if "-outing_glotec" in sys.argv:
+    try:
+        idx = sys.argv.index("-outing_glotec")
+        csv_url_arg = sys.argv[idx + 1]
+    except IndexError:
+        print("Error: -outing_glotec requires a URL to the QSO CSV file.")
+        sys.exit(1)
+    outing_glotec(csv_url_arg)
+    sys.exit(0)
+
 
 if "-slice" in sys.argv:
     try:
