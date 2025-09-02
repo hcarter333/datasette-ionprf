@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 
 ELECTRONS_URL = "https://services.swpc.noaa.gov/json/goes/primary/differential-electrons-7-day.json"
 PROTONS_URL   = "https://services.swpc.noaa.gov/json/goes/primary/differential-protons-7-day.json"
+SECONDARY_ELECTRONS_URL = "https://services.swpc.noaa.gov/json/goes/secondary/differential-electrons-7-day.json"
+SECONDARY_PROTONS_URL   = "https://services.swpc.noaa.gov/json/goes/secondary/differential-protons-7-day.json"
 
 # -----------------------------------------------------------------------------
 # Energy parsing → numeric center in MeV (float)
@@ -46,7 +48,7 @@ def parse_energy(val):
     if val is None:
         return None
     s = str(val)
-
+    return s
     m = _RANGE.search(s)
     if m:
         lo, hi = _num(m.group(1)), _num(m.group(2))
@@ -128,8 +130,8 @@ def build_df(url):
             continue
         # energy
         e = parse_energy(rec.get(energy_key))
-        if e is None or math.isnan(e):
-            continue
+        #if e is None or math.isnan(e):
+        #    continue
         # flux
         val = rec.get(flux_key)
         try:
@@ -237,6 +239,8 @@ def main():
     # Build dataframes
     df_e = build_df(ELECTRONS_URL)
     df_p = build_df(PROTONS_URL)
+    df_s_e = build_df(SECONDARY_ELECTRONS_URL)
+    df_s_p = build_df(SECONDARY_PROTONS_URL)
 
     # Restrict to UTC date range (inclusive)
     def slice_range(df):
@@ -246,6 +250,8 @@ def main():
 
     e_rng = slice_range(df_e)
     p_rng = slice_range(df_p)
+    e_s_rng = slice_range(df_s_e)
+    p_s_rng = slice_range(df_s_p)
 
     # Output paths
     suffix = f"{start_date}_to_{end_date}.png"
@@ -253,12 +259,22 @@ def main():
     e_spec_path = outdir / f"electrons_spectrum_{suffix}"
     p_flux_path = outdir / f"protons_flux_{suffix}"
     p_spec_path = outdir / f"protons_spectrum_{suffix}"
+    suffix = f"{start_date}_to_{end_date}.png"
+    e_s_flux_path = outdir / f"electrons_flux_s_{suffix}"
+    e_s_spec_path = outdir / f"electrons_spectrum_s_{suffix}"
+    p_s_flux_path = outdir / f"protons_flux_s_{suffix}"
+    p_s_spec_path = outdir / f"protons_spectrum_s_{suffix}"
 
     # Plots (four total)
     plot_time_series(e_rng, "electrons", e_flux_path)
     plot_spectrum   (e_rng, "electrons", e_spec_path)
     plot_time_series(p_rng, "protons",   p_flux_path)
     plot_spectrum   (p_rng, "protons",   p_spec_path)
+
+    plot_time_series(e_s_rng, "electrons", e_s_flux_path)
+    plot_spectrum   (e_s_rng, "electrons", e_s_spec_path)
+    plot_time_series(p_s_rng, "protons",   p_s_flux_path)
+    plot_spectrum   (p_s_rng, "protons",   p_s_spec_path)
 
 if __name__ == "__main__":
     main()
