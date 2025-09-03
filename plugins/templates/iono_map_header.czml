@@ -11,38 +11,6 @@
       "step":"SYSTEM_CLOCK_MULTIPLIER"
     }
   },
-{% block czml_f2_qsos %}
-{%- for row in Rows %}
-  {
-    "id": "id {{ row['Spotter'] }} f0f2{{ row['elev_tx'] }}",
-    "name": "time {{ row['timestamp'] }} f0f2 {{ row['dB'] }} kHz",
-    "description": "time {{ row['timestamp'] }} f0f2 {{ row['dB'] }} kHz",
-    "polygon": {
-      "positions": {
-        "cartographicDegrees": [
-          {{ row['tx_lng'] - 2.4 }}, {{ row['tx_lat'] - 1.15 }}, 0.0,
-          {{ row['tx_lng'] + 2.4 }}, {{ row['tx_lat'] - 1.15 }}, 0.0,
-          {{ row['tx_lng'] + 2.4 }}, {{ row['tx_lat'] + 1.15 }}, 0.0,
-          {{ row['tx_lng'] - 2.4 }}, {{ row['tx_lat'] + 1.15 }}, 0.0,
-          {{ row['tx_lng'] - 2.4 }}, {{ row['tx_lat'] - 1.15 }}, 0.0
-        ]
-      },
-      "material": {
-        "solidColor": {
-          "color": {
-            {{ line_color(row['dB']) }}
-          }
-        }
-      },
-      "show": [
-        {
-          "interval": "{{ MinTime }}Z/{{ TotMapEnd }}Z",
-          "boolean": true
-        }
-      ]
-    }
-  },
-{%- endfor %}{% endblock %}
 {% block czml_f2_per_qso %}{%- for row in Rows %}  {
     "id": "id live {{ row['Spotter'] }} fof2 {{ row['elev_tx'] }}",
     "name": "time {{ row['timestamp'] }} fof2 {{ row['dB'] }}  kHz",

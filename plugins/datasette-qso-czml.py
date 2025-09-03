@@ -267,7 +267,7 @@ def get_czml(rows):
     f2delta = datetime.timedelta(minutes=5)
     delta = datetime.timedelta(minutes=1)
     for row in rows:
-        print(row['timestamp'])
+        #print(row['timestamp'])
         start_time = datetime.datetime.strptime(row['timestamp'].replace('T',' '), "%Y-%m-%d %H:%M:%S")
         end_time = start_time + delta
         qso_ends.append(datetime.datetime.strftime(end_time, '%Y-%m-%d %H:%M:%S').replace(' ','T'))
@@ -277,7 +277,7 @@ def get_czml(rows):
         f2e = f2s + f2delta + f2delta
         f2_end.append(f2e)
         f2h = row['f2m']
-        print(row['Spotter'] + " f2 height = " + str(f2h) + "km")
+        #print(row['Spotter'] + " f2 height = " + str(f2h) + "km")
         f2_height.append(f2h*1000)
         mid_lng = str(midpoint_lng(float(row['tx_lat']),float(row['tx_lng']),\
                            float(row['rx_lat']),float(row['rx_lng'])))

@@ -70,7 +70,7 @@ def partial_path_lat(f0,l0, f1,l1, parts):
     x_mid = (x_0+((x_1-x_0)/parts))
     y_mid = (y_0+((y_1-y_0)/parts))
     z_mid = (z_0+((z_1-z_0)/parts))
-    print(str(x_mid) + " " + str(y_mid) + " " + str(z_mid))
+    #print(str(x_mid) + " " + str(y_mid) + " " + str(z_mid))
     return spherical_lat(x_mid, y_mid, z_mid)
 
 def partial_path_lng(f0,l0, f1,l1, parts):
@@ -239,7 +239,7 @@ def line_color(thmF2_km):
     #be the min and the last will be the max
     min_alt_km = colormin
     max_alt_km = colormax
-    print("input " + str(hmF2_km) + "colorscale " + str(colormin) + " " + str(colormax))
+    #print("input " + str(hmF2_km) + "colorscale " + str(colormin) + " " + str(colormax))
     # Define the color scale as lists of [R, G, B, A].
     alt_color_scale = [
         [0, 0, 0, hmF2_colors],       # Black
@@ -263,7 +263,7 @@ def line_color(thmF2_km):
 
     # Normalize the altitude and map it to an index in the color scale.
     range_alt = max_alt_km - min_alt_km
-    print("range_alt " + str(range_alt))
+    #print("range_alt " + str(range_alt))
     normalized = (hmF2_km - min_alt_km) / range_alt
     if normalized == 1:
         normalized = 0.95
@@ -304,7 +304,7 @@ def minimum_time(rows):
         new_time = datetime.datetime.strptime(time_no_z.replace('T',' '), "%Y-%m-%d %H:%M:%S")
         if new_time < min_time:
             min_time = new_time
-    print('found min_time = ' + str(min_time))
+    #print('found min_time = ' + str(min_time))
     return min_time
     
 
@@ -323,19 +323,19 @@ def time_span(rows):
     #find the largest time
     max_time = datetime.datetime.strptime('1968-02-02 00:00:00', "%Y-%m-%d %H:%M:%S")
     for row in rows:
-        print(row['timestamp'])
+        #print(row['timestamp'])
         time_no_z = row['timestamp'].replace('Z','')
         new_time = datetime.datetime.strptime(time_no_z.replace('T',' '), "%Y-%m-%d %H:%M:%S")
         if new_time > max_time:
             max_time = new_time
-    print("max time is " + str(max_time))
+    #print("max time is " + str(max_time))
     
     min_time = minimum_time(rows)
-    print("min time is " + str(min_time))
+    #print("min time is " + str(min_time))
     span = max_time - min_time
-    print(str(span.seconds))
+    #print(str(span.seconds))
     mins = int(math.ceil(span.seconds/(60)))
-    print('minutes ' + str(mins))
+    #print('minutes ' + str(mins))
     return mins
 
 def get_czml(rows):
@@ -357,7 +357,7 @@ def get_czml(rows):
     #not used yet; eventually pass into get_f2m
     f2_station = "EA653"
     mins = time_span(rows)
-    print("mins " + str(mins))
+    #print("mins " + str(mins))
     #get the array of minutes ready to go
     map_time = minimum_time(rows)
     for minute in range(mins):
@@ -369,7 +369,7 @@ def get_czml(rows):
     f2delta = datetime.timedelta(minutes=10)
     delta = datetime.timedelta(minutes=10)
     for row in rows:
-        print(row['timestamp'])
+        #print(row['timestamp'])
         time_no_z = row['timestamp'].replace('Z','')
         time_cr = time_no_z.replace('T',' ')
         start_time = datetime.datetime.strptime(time_cr, "%Y-%m-%d %H:%M:%S")
@@ -381,8 +381,8 @@ def get_czml(rows):
         f2e = f2s + f2delta + f2delta
         f2_end.append(f2e)
         f2h = float(row['edmaxalt'])
-        print(str(f2h))
-        print(str(row['Spotter']) + " f2 height = " + str(f2h) + "km")
+        #print(str(f2h))
+        #print(str(row['Spotter']) + " f2 height = " + str(f2h) + "km")
         f2_height.append(f2h*1000)
         #mid_lng = str(midpoint_lng(float(row['tx_lat']),float(row['tx_lng']),\
         #                   float(row['rx_lat']),float(row['rx_lng'])))
@@ -409,7 +409,7 @@ def get_czml(rows):
         mit = minimum_time(rows) - delta
         mat = maximum_time(rows) + delta
         mintime = str(mit).replace(' ', 'T')
-        print(str(mit) + " mintime: " + str(mintime))
+        #print(str(mit) + " mintime: " + str(mintime))
         #display all the QSOs for a few seconds at the beginning of the maps
         delta = datetime.timedelta(minutes=0.3)
         tmb = mit - delta
