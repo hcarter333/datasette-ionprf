@@ -42,6 +42,7 @@ import csv
 import sqlite3
 import math
 import tempfile
+import urllib
 import numpy as np
 from datetime import datetime, timedelta
 from netCDF4 import Dataset, num2date
@@ -645,6 +646,8 @@ def outing_glotec(csv_url):
 
     begin_iso = begin_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso   = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    begin_link_iso = begin_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    end_link_iso = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     print(f"outing_glotec → computed time window:")
     print(f"  first QSO: {first_dt}  last QSO: {last_dt}")
@@ -653,6 +656,13 @@ def outing_glotec(csv_url):
 
     # Equivalent to calling: glotec.py -updatedb <begin_iso> <end_iso>
     update_db(begin_iso, end_iso)
+
+    #Create the slices since now
+    slice_databases(begin_iso, end_iso)
+
+
+    #output a hyperlink to global_local3.html
+    print("You can access the associated Cesium map at http://127.0.0.1:8001/assets/glotec_local3.html?minLat=-89&maxLat=89&minLng=-179&maxLng=179&startTs=" + urllib.parse.quote_plus(begin_link_iso) + "&endTs=" + urllib.parse.quote_plus(end_link_iso))
 
 
 # -------------------------
