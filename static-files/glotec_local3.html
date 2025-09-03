@@ -190,6 +190,33 @@
             return sql;
           }
 
+          function build_pref2m_QSOSQL(minLat, maxLat, minLng, maxLng, startTs, endTs, elev) {
+            var sql = `
+SELECT 
+  timestamp,
+  strftime('%Y%m%d', timestamp) as date,
+  strftime('%H%M', timestamp) as time,
+  dB,
+  tx_rst,
+  tx_lat,
+  Spotter,
+  tx_lng,
+  rx_lat,
+  rx_lng,
+  325 as ionosonde,
+  '${elev}' as elev_tx,
+  0 as hmF2Map,
+  "US-4578" as park,
+  'KD0FNR' as call,
+  cast(f2m as integer) as f2m
+from  rm_rnb_history_pres
+WHERE timestamp BETWEEN '${startTs}' AND '${endTs}' AND dB > 100
+
+            `;
+          return sql;
+          }
+
+
           function buildQSOSQL(minLat, maxLat, minLng, maxLng, startTs, endTs, elev) {
             var sql = `
 WITH qso AS (
@@ -277,6 +304,10 @@ ORDER BY timestamp ASC;
               minVal = value;
             }
           }
+          else{
+            console.log("no match hmF2")
+            console.log(entity._description._value);
+          }
         }
       });
       return minVal;
@@ -288,12 +319,16 @@ ORDER BY timestamp ASC;
       let maxVal = -Infinity;
       fof2DataSource.entities.values.forEach(entity => {
         if (entity._description && entity._description._value) {
-          const match = /f0f2\s+([\d\.]+)/i.exec(entity._description._value);
+          
+          const match = /fof2\s+([\d\.]+)/i.exec(entity._description._value);
           if (match && !isNaN(match[1])) {
             const value = parseFloat(match[1]);
             if (value > maxVal) {
               maxVal = value;
             }
+          }
+          else{
+            console.log(entity._description._value);
           }
         }
       });
@@ -305,7 +340,7 @@ ORDER BY timestamp ASC;
       let minVal = Infinity;
       fof2DataSource.entities.values.forEach(entity => {
         if (entity._description && entity._description._value) {
-          const match = /f0f2\s+([\d\.]+)/i.exec(entity._description._value);
+          const match = /fof2\s+([\d\.]+)/i.exec(entity._description._value);
           if (match && !isNaN(match[1])) {
             const value = parseFloat(match[1]);
             if (value < minVal) {
@@ -465,7 +500,7 @@ ORDER BY timestamp ASC;
               startTs,
               endTs
             );
-            var qsoSQL = buildQSOSQL(
+            var qsoSQL = build_pref2m_QSOSQL(
               minLat,
               maxLat,
               minLng,
@@ -476,7 +511,7 @@ ORDER BY timestamp ASC;
             );
             var glotecUrl = baseUrl + "glotec_slice.iczml?sql=" + encodeURIComponent(glotecSQL);
             var fof2Url = baseUrl + "glotec_slice.iczml?sql=" + encodeURIComponent(fof2SQL);
-            qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
+            qsoUrl = baseUrl + "rm_toucans_slice.czml?sql=" + encodeURIComponent(qsoSQL);  
             console.debug("hmF2 " + glotecUrl);
             console.debug("fof2Url" + fof2Url);
             console.debug("qsoUrl" + qsoUrl);
@@ -662,7 +697,7 @@ document.getElementById('downloadQsoButton').addEventListener('click', async () 
     var startTs = document.getElementById("startTs").value;
     var endTs = document.getElementById("endTs").value;
 
-    var qsoSQL = buildQSOSQL(
+    var qsoSQL = build_pref2m_QSOSQL(
       minLat,
       maxLat,
       minLng,
@@ -671,7 +706,7 @@ document.getElementById('downloadQsoButton').addEventListener('click', async () 
       endTs,
       newHeight
     );
-    qsoUrl = baseUrl + "_memory.czml?sql=" + encodeURIComponent(qsoSQL);
+    qsoUrl = baseUrl + "rm_toucans_slice.czml?sql=" + encodeURIComponent(qsoSQL);
 
     // Fetch the CZML text
     // Create a link and click it to download
