@@ -30,7 +30,7 @@ def safe_ts(ts: str) -> str:
 # ---------------------------------------------------------------------------
 
 def grid_lon(lon): return 2.5 + 5.0 * round((lon - 2.5) / 5.0)
-def grid_lat(lat): return -88.75 + 1.5 * round((lat + 88.75) / 1.5)
+def grid_lat(lat): return -88.75 + 2.5 * round((lat + 88.75) / 2.5)
 
 # ---------------------------------------------------------------------------
 # Fetch one time-slice of GloTEC
@@ -93,7 +93,7 @@ def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
              datasource="http://127.0.0.1:8001"):
     """
     Produce BOTH fof2 and hmf2 plots.
-    Saves  <uid>_<var>_<exactTimestamp>.png  in *out_dir*.
+    Saves  <exactTimestamp>_<callsign>.png  in *out_dir*.
     Returns list of generated file paths.
     """
     ts_round = round_to_glotec(ts_exact)
@@ -125,7 +125,7 @@ def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
         if not xs:  # no data for this var along path
             continue
 
-        fname = f"{uid}_{var}_{safe_ts(ts_exact)}.png"
+        fname = f"{safe_ts(ts_exact)}_{call_sign}_{var}.png"
         fpath = out_dir / fname
 
         plt.figure(figsize=(8,4.5))
