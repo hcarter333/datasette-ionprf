@@ -40,7 +40,7 @@ def fetch_glotec_map(ts, base="http://127.0.0.1:8001"):
     sql = (
         "select longitude, latitude, hmF2, (sqrt(NmF2/.0124))/1000 as fof2 "
         "from glotec "
-        f"where timestamp == '{ts}'"
+        f"where timestamp == '{ts}' and NmF2 > 0"
     )
     url = f"{base}/glotec_slice.json?sql=" + urllib.parse.quote(sql, safe="")
     with urllib.request.urlopen(url) as r:
