@@ -12,6 +12,9 @@
     const elevfeet = getParam("elevfeet");
     console.log("Elevation path in feet is ", elevfeet);
 
+    const paneloff = getParam("paneloff");
+    console.log("Panel off is ", paneloff);
+
 
 // allow reassignment from the panel
   let maxFeet = 600;
@@ -20,7 +23,10 @@
     maxFeet = elevfeet;
   }
 
-
+if(paneloff != null && paneloff == 1){
+    const panel = document.getElementById('controlPanel');
+    panel.classList.toggle('hidden');  
+}
 
 
 
