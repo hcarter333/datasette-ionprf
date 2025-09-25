@@ -117,11 +117,14 @@ def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
 
     for var in ("fof2", "hmf2"):
         xs, ys = [], []
+        #print(call_sign)
+        #print("angle," + var)
         for lon_c, lat_c, f in samples:
             v = data.get((lon_c, lat_c), {}).get(var)
             if v is not None:
                 xs.append(f * tot_deg)
                 ys.append(v)
+                #print(str(f*tot_deg) + "," + str(v))
         if not xs:  # no data for this var along path
             continue
 

@@ -75,10 +75,472 @@
       </head>
       <body>
         <div id="cesiumContainer"></div>
+
+
+
+
         <script>
-          // Set your Cesium Ion access token.
+
+
+//Download CZML files
+
+/**
+ * Save a Cesium DataSource to a CZML file (basic exporter).
+ * Supports: position (constant or sampled), point, polyline (constant positions), color/width.
+ *
+ * @param {Cesium.DataSource} dataSource
+ * @param {string} [filename="export.czml"]
+ * @param {Cesium.Viewer} [viewer]  // used to resolve currentTime for getValue(); optional but recommended
+ */
+async function saveDataSourceToCZML(dataSource, filename = "export.czml", viewer) {
+  if (!dataSource) throw new Error("saveDataSourceToCZML: dataSource is required");
+  const time = viewer?.clock?.currentTime;
+
+  // --- helpers ---
+  const toRgba = (c) => {
+    if (!c) return undefined;
+    // Cesium Color is 0..1 floats; CZML needs 0..255 integers
+    const r = Math.round(c.red   * 255);
+    const g = Math.round(c.green * 255);
+    const b = Math.round(c.blue  * 255);
+    const a = Math.round((c.alpha ?? 1) * 255);
+    return [r, g, b, a];
+  };
+
+  const cartesianToCartoDegrees = (cart) => {
+    const carto = Cesium.Cartographic.fromCartesian(cart);
+    return [
+      Cesium.Math.toDegrees(carto.longitude),
+      Cesium.Math.toDegrees(carto.latitude),
+      carto.height
+    ];
+  };
+
+  // CZML "position" writer for common property types
+  const writePositionProperty = (posProp) => {
+    if (!posProp) return undefined;
+
+    // ConstantPositionProperty or raw Cartesian3
+    if (posProp instanceof Cesium.ConstantPositionProperty || posProp instanceof Cesium.ConstantProperty || posProp instanceof Cesium.Cartesian3) {
+      const cart = posProp.getValue ? posProp.getValue(time) : posProp;
+      if (!cart) return undefined;
+      return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+    }
+
+    // SampledPositionProperty
+    if (posProp instanceof Cesium.SampledPositionProperty) {
+      const times = posProp._times || [];
+      if (!times.length) return undefined;
+
+      const epoch = Cesium.JulianDate.toIso8601(times[0]); // CZML epoch
+      const samples = [];
+      for (let i = 0; i < times.length; i++) {
+        const t = times[i];
+        const seconds = Cesium.JulianDate.secondsDifference(t, times[0]);
+        const cart = posProp.getValue(t);
+        const [lon, lat, h] = cartesianToCartoDegrees(cart);
+        samples.push(seconds, lon, lat, h);
+      }
+      return { cartographicDegrees: { epoch, number: samples } };
+    }
+
+    // CallbackProperty (evaluate at current time)
+    if (posProp instanceof Cesium.CallbackProperty) {
+      const cart = posProp.getValue(time);
+      if (!cart) return undefined;
+      return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+    }
+
+    // Fallback: try getValue()
+    if (typeof posProp.getValue === "function") {
+      const cart = posProp.getValue(time);
+      if (!cart) return undefined;
+      return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+    }
+    return undefined;
+  };
+
+  // CZML "positions" for polylines (array of Cartesian3 or a ConstantProperty holding that)
+  const writePolylinePositions = (positionsProp) => {
+    let arr = positionsProp;
+    if (positionsProp?.getValue) arr = positionsProp.getValue(time);
+    if (!Array.isArray(arr) || !arr.length) return undefined;
+    const flat = [];
+    for (const p of arr) {
+      const [lon, lat, h] = cartesianToCartoDegrees(p);
+      flat.push(lon, lat, h);
+    }
+    return { cartographicDegrees: flat };
+  };
+
+  const docPacket = {
+    id: "document",
+    version: "1.0",
+    name: dataSource.name || "Export",
+    // optional: clock can be added if you’re exporting sampled data across a range
+  };
+
+  const czml = [docPacket];
+
+  const entities = dataSource?.entities?.values || [];
+  for (const e of entities) {
+    const pkt = { id: e.id };
+
+    if (e.name) pkt.name = e.name;
+
+    // availability (if defined)
+    if (e.availability) {
+      const intervalStr = e.availability.toString(); // Cesium TimeIntervalCollection -> ISO interval string(s)
+      if (intervalStr) pkt.availability = intervalStr;
+    }
+
+    // position (for points/billboards/labels/or general position-bearing entities)
+    if (e.position) {
+      const pos = writePositionProperty(e.position);
+      if (pos) pkt.position = pos;
+    }
+
+    // point
+    if (e.point) {
+      const point = {};
+      if (e.point.pixelSize) {
+        const size = e.point.pixelSize.getValue ? e.point.pixelSize.getValue(time) : e.point.pixelSize;
+        if (size != null) point.pixelSize = size;
+      }
+      if (e.point.color) {
+        const col = e.point.color.getValue ? e.point.color.getValue(time) : e.point.color;
+        const rgba = toRgba(col);
+        if (rgba) point.color = { rgba };
+      }
+      if (Object.keys(point).length) pkt.point = point;
+    }
+
+    // polyline
+    if (e.polyline) {
+      const polyline = {};
+      const pos = writePolylinePositions(e.polyline.positions);
+      if (pos) polyline.positions = pos;
+
+      if (e.polyline.width) {
+        const w = e.polyline.width.getValue ? e.polyline.width.getValue(time) : e.polyline.width;
+        if (w != null) polyline.width = w;
+      }
+
+      // material: color only (simple case)
+      const mat = e.polyline.material?.getValue ? e.polyline.material.getValue(time) : e.polyline.material;
+      // solid color material
+      if (mat?.color) {
+        const rgba = toRgba(mat.color);
+        if (rgba) polyline.material = { solidColor: { color: { rgba } } };
+      } else if (mat?.solidColor?.color) {
+        const colVal = mat.solidColor.color.getValue ? mat.solidColor.color.getValue(time) : mat.solidColor.color;
+        const rgba = toRgba(colVal);
+        if (rgba) polyline.material = { solidColor: { color: { rgba } } };
+      }
+
+      if (Object.keys(polyline).length) pkt.polyline = polyline;
+    }
+
+    // Only push if we captured something beyond id
+    if (Object.keys(pkt).length > 1) czml.push(pkt);
+  }
+
+  // download
+  const blob = new Blob([JSON.stringify(czml, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  a.remove();
+}
+
+
+
+
+
+
+// CesiumLayerPanel.js  — ESM module
+// Minimal, robust layer panel for Cesium DataSources with single click delegation.
+
+class CesiumLayerPanel {
+  /**
+   * @param {Cesium.Viewer} viewer
+   * @param {Object} [opts]
+   * @param {string|HTMLElement} [opts.panel]         Selector or element for the panel container (created if missing).
+   * @param {string} [opts.listSelector]              Selector for the inner list (created if missing). Default '#dsList'.
+   * @param {(src: any)=>boolean} [opts.filter]       Only show DataSources where filter(src) === true.
+   * @param {string} [opts.title]                     Panel title. Default 'Data Sources'.
+   */
+  constructor(viewer, opts = {}) {
+    if (!viewer) throw new Error('CesiumLayerPanel: viewer is required');
+    this.viewer = viewer;
+
+    // Options
+    this.opts = {
+      panel: '#controlPanel',
+      listSelector: '#dsList',
+      filter: null,              // e.g., (src) => src.__wedge === true
+      title: 'Data Sources',
+      ...opts,
+    };
+
+    // DOM
+    this.panel = this._resolvePanel(this.opts.panel);
+    this.list = this._resolveList(this.panel, this.opts.listSelector);
+
+    // State
+    this._idToSource = new Map();
+    this._perSourceListeners = new Map(); // DataSource -> { onLoading, onChanged }
+    this._uid = 0;
+    this._renderScheduled = false;
+
+    // Bind handlers so we can remove them later
+    this._onPanelClick = this._onPanelClick.bind(this);
+    this._onDataSourceAdded = this._onDataSourceAdded.bind(this);
+    this._onDataSourceRemoved = this._onDataSourceRemoved.bind(this);
+
+    // Wire events
+    this.panel.addEventListener('click', this._onPanelClick);
+    const coll = this.viewer.dataSources;
+    coll.dataSourceAdded.addEventListener(this._onDataSourceAdded);
+    coll.dataSourceRemoved.addEventListener(this._onDataSourceRemoved);
+
+    // Attach listeners to existing sources (if any)
+    for (let i = 0; i < coll.length; i++) {
+      const src = coll.get(i);
+      this._attachSourceListeners(src);
+    }
+
+    // Initial paint
+    this._render();
+  }
+
+  /** Force a re-render of the panel. */
+  refresh() { this._render(); }
+
+// Public helper: all currently visible data sources (respects opts.filter)
+getVisibleSources() {
+  const out = [];
+  const coll = this.viewer.dataSources;
+  for (let i = 0; i < coll.length; i++) {
+    const src = coll.get(i);
+    if (typeof this.opts.filter === 'function' && !this.opts.filter(src)) continue;
+    if (src && src.show !== false) out.push(src);
+  }
+  return out;
+}
+
+  /** Clean up all listeners and DOM references created by this panel. */
+  destroy() {
+    // Remove collection listeners
+    const coll = this.viewer.dataSources;
+    coll.dataSourceAdded.removeEventListener(this._onDataSourceAdded);
+    coll.dataSourceRemoved.removeEventListener(this._onDataSourceRemoved);
+
+    // Remove per-source listeners
+    for (const [src, fns] of this._perSourceListeners.entries()) {
+      if (fns.onLoading && src?.loadingEvent?.removeEventListener) {
+        src.loadingEvent.removeEventListener(fns.onLoading);
+      }
+      if (fns.onChanged && src?.changedEvent?.removeEventListener) {
+        src.changedEvent.removeEventListener(fns.onChanged);
+      }
+    }
+    this._perSourceListeners.clear();
+
+    // Remove panel listener (keep the element in DOM)
+    this.panel.removeEventListener('click', this._onPanelClick);
+
+    // Clear UI state maps
+    this._idToSource.clear();
+  }
+
+  // -------------------- private helpers --------------------
+
+  _resolvePanel(panelOpt) {
+    let el = null;
+    if (typeof panelOpt === 'string') el = document.querySelector(panelOpt);
+    else if (panelOpt instanceof HTMLElement) el = panelOpt;
+
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'controlPanel';
+      Object.assign(el.style, {
+        position: 'absolute',
+        top: '10px',
+        left: '10px',
+        background: 'rgba(255,255,255,0.9)',
+        padding: '10px',
+        borderRadius: '6px',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+        fontSize: '14px',
+        zIndex: 1000,
+      });
+      const title = document.createElement('strong');
+      title.textContent = this.opts.title || 'Data Sources';
+      title.style.display = 'block';
+      title.style.marginBottom = '8px';
+      el.appendChild(title);
+      document.body.appendChild(el);
+    } else {
+      // Update title if present, else add one
+      const first = el.querySelector('strong');
+      if (first) first.textContent = this.opts.title || 'Data Sources';
+      else {
+        const title = document.createElement('strong');
+        title.textContent = this.opts.title || 'Data Sources';
+        title.style.display = 'block';
+        title.style.marginBottom = '8px';
+        el.prepend(title);
+      }
+    }
+    return el;
+  }
+
+  _resolveList(panel, listSelector) {
+    const sel = listSelector || '#dsList';
+    let list = panel.querySelector(sel);
+    if (!list) {
+      list = document.createElement('div');
+      list.id = sel.startsWith('#') ? sel.slice(1) : sel;
+      panel.appendChild(list);
+    }
+    return list;
+  }
+
+  _scheduleRender() {
+    if (this._renderScheduled) return;
+    this._renderScheduled = true;
+    Promise.resolve().then(() => {
+      this._renderScheduled = false;
+      this._render();
+    });
+  }
+
+  _render() {
+    this._idToSource.clear();
+    this.list.innerHTML = '';
+
+    // Copy DataSourceCollection -> array
+    const dsArray = [];
+    const coll = this.viewer.dataSources;
+    for (let i = 0; i < coll.length; i++) dsArray.push(coll.get(i));
+
+    // Optional filter
+    const filtered = typeof this.opts.filter === 'function'
+      ? dsArray.filter(this.opts.filter)
+      : dsArray;
+
+    if (!filtered.length) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No data sources loaded.';
+      empty.style.opacity = '0.7';
+      this.list.appendChild(empty);
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    filtered.forEach((src, idx) => {
+      const row = document.createElement('label');
+      Object.assign(row.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        margin: '6px 0',
+      });
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = src.show !== false;
+      const id = `ds-${++this._uid}`;
+      cb.dataset.dsuid = id;
+      cb.setAttribute('aria-label', 'toggle data source visibility');
+
+      const name = document.createElement('span');
+      name.textContent = (src?.name && String(src.name).trim())
+        ? String(src.name).trim()
+        : (src?.constructor?.name || 'DataSource') + ' ' + (idx + 1);
+
+      row.style.opacity = src?.isLoading ? '0.5' : '1';
+      row.appendChild(cb);
+      row.appendChild(name);
+      frag.appendChild(row);
+
+      this._idToSource.set(id, src);
+    });
+
+    this.list.appendChild(frag);
+  }
+
+  _attachSourceListeners(src) {
+    const fns = {};
+    if (src?.loadingEvent?.addEventListener) {
+      fns.onLoading = () => this._scheduleRender();
+      src.loadingEvent.addEventListener(fns.onLoading);
+    }
+    if (src?.changedEvent?.addEventListener) {
+      fns.onChanged = () => this._scheduleRender();
+      src.changedEvent.addEventListener(fns.onChanged);
+    }
+    if (Object.keys(fns).length) {
+      this._perSourceListeners.set(src, fns);
+    }
+  }
+
+  _detachSourceListeners(src) {
+    const fns = this._perSourceListeners.get(src);
+    if (!fns) return;
+    if (fns.onLoading && src?.loadingEvent?.removeEventListener) {
+      src.loadingEvent.removeEventListener(fns.onLoading);
+    }
+    if (fns.onChanged && src?.changedEvent?.removeEventListener) {
+      src.changedEvent.removeEventListener(fns.onChanged);
+    }
+    this._perSourceListeners.delete(src);
+  }
+
+  _onDataSourceAdded(collection, src) {
+    this._attachSourceListeners(src);
+    this._scheduleRender();
+  }
+
+  _onDataSourceRemoved(collection, src) {
+    this._detachSourceListeners(src);
+    this._scheduleRender();
+  }
+
+  _onPanelClick(evt) {
+    const t = evt.target;
+    if (!(t instanceof HTMLInputElement) || t.type !== 'checkbox') return;
+    const id = t.dataset.dsuid;
+    if (!id) return;
+    const src = this._idToSource.get(id);
+    if (!src) return;
+    src.show = !!t.checked;
+    this.viewer.scene.requestRender();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Set your Cesium Ion access token.
           Cesium.Ion.defaultAccessToken =
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmODMzNDkwZS1mM2FjLTRlZTItYjBhZi0xYzg2ZWM2N2E2MWYiLCJpZCI6MTk1MTc5LCJpYXQiOjE3NDcwNzg1MDl9.P6fL1q2q5m1xEcMyFn4QhpufO7rzBHcWPzQw6u9DqF4';
+            'set your Cesium Ion access token';
           var qsoUrl = "";
           var newHeight = 22;
           // Initialize the Cesium Viewer.
@@ -87,6 +549,14 @@
               requestVertexNormals: true
             })
           });
+          //const panelCtl = attachDataSourceVisibilityPanel(viewer);
+//const panelCtl = attachDataSourceVisibilityPanel(viewer, {
+//  includeImagery: true,
+//  includeTilesets: true
+//});
+
+  const panelCtl = new CesiumLayerPanel(viewer);
+
           viewer.scene.globe.enableLighting = true;
           var osm = new Cesium.OpenStreetMapImageryProvider({
             url: 'https://tile.openstreetmap.org'
@@ -265,7 +735,12 @@ ORDER BY timestamp ASC;
           // Global data source variables so we can update them.
           var glotecDataSource;
           var fof2DataSource;
-          var qsoDataSource;
+          var qsoDataSource; 
+          var radinfSource;
+          var sphere1;
+          var sphere2;
+          var sphere3;
+          var wedge1, wwedge2, wedge3;
 
           // ------------------------------
           // Methods to compute min/max values
@@ -424,31 +899,31 @@ ORDER BY timestamp ASC;
 
           // Update legends based on current checkbox selections and loaded data.
           function updateLegends() {
-            var glotecCheckbox = document.getElementById("toggleGlotec");
-            if (glotecCheckbox.checked && glotecDataSource) {
-              var minHmF2 = getMinHmF2();
-              var maxHmF2 = getMaxHmF2();
-              if (minHmF2 !== null && maxHmF2 !== null) {
-                buildLegend("legendHmF2", minHmF2, maxHmF2, "hmF2 Legend");
-                document.getElementById("legendHmF2").style.display = "block";
-              }
-            } else {
-              var legendHmF2 = document.getElementById("legendHmF2");
-              if (legendHmF2) legendHmF2.style.display = "none";
-            }
-
-            var fof2Checkbox = document.getElementById("toggleFof2");
-            if (fof2Checkbox.checked && fof2DataSource) {
-              var minFof2 = getMinFof2();
-              var maxFof2 = getMaxFof2();
-              if (minFof2 !== null && maxFof2 !== null) {
-                buildLegend("legendFof2", minFof2, maxFof2, "FOF2 Legend");
-                document.getElementById("legendFof2").style.display = "block";
-              }
-            } else {
-              var legendFof2 = document.getElementById("legendFof2");
-              if (legendFof2) legendFof2.style.display = "none";
-            }
+//            var glotecCheckbox = document.getElementById("toggleGlotec");
+//            if (glotecCheckbox.checked && glotecDataSource) {
+//              var minHmF2 = getMinHmF2();
+//              var maxHmF2 = getMaxHmF2();
+//              if (minHmF2 !== null && maxHmF2 !== null) {
+//                buildLegend("legendHmF2", minHmF2, maxHmF2, "hmF2 Legend");
+//                document.getElementById("legendHmF2").style.display = "block";
+//              }
+//            } else {
+//              var legendHmF2 = document.getElementById("legendHmF2");
+//              if (legendHmF2) legendHmF2.style.display = "none";
+//            }
+//
+//            var fof2Checkbox = document.getElementById("toggleFof2");
+//            if (fof2Checkbox.checked && fof2DataSource) {
+//              var minFof2 = getMinFof2();
+//              var maxFof2 = getMaxFof2();
+//              if (minFof2 !== null && maxFof2 !== null) {
+//                buildLegend("legendFof2", minFof2, maxFof2, "FOF2 Legend");
+//                document.getElementById("legendFof2").style.display = "block";
+//              }
+//            } else {
+//              var legendFof2 = document.getElementById("legendFof2");
+//              if (legendFof2) legendFof2.style.display = "none";
+//            }
           }
 
          // ------------------------------
@@ -478,6 +953,173 @@ ORDER BY timestamp ASC;
            var url = base + "?" + params.toString();
            mapLink.href = url;
          }
+
+////////////////////////////////////////////////////
+////////////Layer auto-panel
+///////////////////////////////////////////////////
+/**
+ * Hook up an auto-updating, click-delegated control panel for Cesium DataSources.
+ * - Re-renders when sources are added, removed, or finish loading.
+ * - Single event listener handles all checkbox clicks (event delegation).
+ *
+ * @param {Cesium.Viewer} viewer
+ * @param {Object} [opts]
+ * @param {string|HTMLElement} [opts.panel="#controlPanel"] container element or selector
+ * @param {string} [opts.listSelector="#dsList"] inner list container (created if absent)
+ */
+
+function attachDataSourceVisibilityPanel(viewer, opts = {}) {
+  // ----- panel & list -----
+  const panel = typeof opts.panel === 'string'
+    ? (document.querySelector(opts.panel) || createDefaultPanel())
+    : (opts.panel || createDefaultPanel());
+
+  let list = panel.querySelector(opts.listSelector || '#dsList');
+  if (!list) {
+    list = document.createElement('div');
+    list.id = (opts.listSelector || '#dsList').replace(/^#/, '');
+    panel.appendChild(list);
+  }
+
+  // ----- state kept in scope BEFORE render() -----
+  const idToSource = new Map();         // <-- ensure this exists before render()
+  let uid = 0;
+  const idFor = () => `ds-${++uid}`;
+
+  let renderScheduled = false;
+  const scheduleRender = () => {
+    if (renderScheduled) return;
+    renderScheduled = true;
+    Promise.resolve().then(() => { render(); renderScheduled = false; });
+  };
+
+  // ----- render the checkbox list -----
+  function render() {
+    idToSource.clear();
+    list.innerHTML = '';
+
+    // DataSourceCollection does NOT have `.values`; iterate with length/get()
+    const col = viewer.dataSources;
+    const sources = [];
+    for (let i = 0; i < col.length; i++) sources.push(col.get(i));
+
+    if (!sources.length) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No data sources loaded.';
+      empty.style.opacity = '0.7';
+      list.appendChild(empty);
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    sources.forEach((src, idx) => {
+      const row = document.createElement('label');
+      row.style.display = 'flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '8px';
+      row.style.margin = '6px 0';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = src.show !== false;
+      const id = idFor();
+      cb.dataset.dsuid = id;
+      cb.setAttribute('aria-label', 'toggle data source visibility');
+
+      const name = document.createElement('span');
+      name.textContent =
+        (src?.name && src.name.trim()) ? src.name.trim()
+        : (src?.constructor?.name || 'DataSource') + ' ' + (idx + 1);
+
+      row.style.opacity = src?.isLoading ? '0.5' : '1';
+      row.appendChild(cb);
+      row.appendChild(name);
+      frag.appendChild(row);
+
+      idToSource.set(id, src);
+    });
+
+    list.appendChild(frag);
+  }
+
+  // ----- keep in sync with adds/removes/loads -----
+  const collection = viewer.dataSources;
+
+  collection.dataSourceAdded.addEventListener((_col, src) => {
+    // re-render on add and when load state changes
+    if (src?.loadingEvent?.addEventListener) {
+      src.loadingEvent.addEventListener(() => scheduleRender());
+    }
+    if (src?.changedEvent?.addEventListener) {
+      src.changedEvent.addEventListener(() => scheduleRender());
+    }
+    scheduleRender();
+  });
+
+  collection.dataSourceRemoved.addEventListener(() => scheduleRender());
+
+  // initial paint
+  render();
+
+  // ----- single delegated click handler -----
+  panel.addEventListener('click', (evt) => {
+    const t = evt.target;
+    if (!(t instanceof HTMLInputElement) || t.type !== 'checkbox') return;
+    const src = idToSource.get(t.dataset.dsuid);
+    if (src) {
+      src.show = !!t.checked;
+      viewer.scene.requestRender();
+    }
+  });
+
+  // ----- helpers -----
+  function createDefaultPanel() {
+    const div = document.createElement('div');
+    div.id = 'controlPanel';
+    div.style.position = 'absolute';
+    div.style.top = '10px';
+    div.style.left = '10px';
+    div.style.background = 'rgba(255,255,255,0.9)';
+    div.style.padding = '10px';
+    div.style.borderRadius = '6px';
+    div.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+    div.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    div.style.fontSize = '14px';
+    const title = document.createElement('strong');
+    title.textContent = 'Data Sources';
+    title.style.display = 'block';
+    title.style.marginBottom = '8px';
+    div.appendChild(title);
+    const listDiv = document.createElement('div');
+    listDiv.id = 'dsList';
+    div.appendChild(listDiv);
+    document.body.appendChild(div);
+    return div;
+  }
+
+  return { refresh: () => render() };
+}
+
+
+// ---- usage example ----
+// const viewer = new Cesium.Viewer("cesiumContainer", { terrain: Cesium.Terrain.fromWorldTerrain() });
+// const panelCtl = attachDataSourceVisibilityPanel(viewer);
+// (no further code changes needed — add/remove data sources freely)
+//////////////////////////////////////////////////////////////
+//////////////Layer auto panel
+//////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+
+
 
           // ------------------------------
           // Function to load or update the CZML layers based on the given parameters.
@@ -529,17 +1171,56 @@ ORDER BY timestamp ASC;
             // Load new data sources.
             Cesium.CzmlDataSource.load(glotecUrl).then(function (ds) {
               glotecDataSource = ds;
-              viewer.dataSources.add(glotecDataSource);
+              //viewer.dataSources.add(glotecDataSource);
               // Once loaded, update the legends.
               updateLegends();
             });
 
             Cesium.CzmlDataSource.load(fof2Url).then(function (ds) {
               fof2DataSource = ds;
-              viewer.dataSources.add(fof2DataSource);
+              //viewer.dataSources.add(fof2DataSource);
               updateLegends();
             });
 
+            Cesium.CzmlDataSource.load("interference_200yd_overlay_a.czml").then(function (ds) {
+              radinfSource = ds;
+              viewer.dataSources.add(radinfSource);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_MODELED_corrected_1000m.czml").then(function (ds) {
+              sphere1 = ds;
+              viewer.dataSources.add(sphere1);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_MODELED_corrected_250m.czml").then(function (ds) {
+              sphere2 = ds;
+              viewer.dataSources.add(sphere2);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_MODELED_corrected_500m.czml").then(function (ds) {
+              sphere3 = ds;
+              viewer.dataSources.add(sphere3);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_315_200_250m.czml").then(function (ds) {
+              wedge1 = ds;
+              viewer.dataSources.add(wedge1);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_315_200_500m.czml").then(function (ds) {
+              wedge2 = ds;
+              viewer.dataSources.add(wedge2);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("shell_wedge_315_200_1000m.czml").then(function (ds) {
+              wedge3 = ds;
+              viewer.dataSources.add(wedge3);
+              //updateLegends();
+            });
+//Cesium.CzmlDataSource.load('one_maritime_plaza_outline.czml').then(ds => {
+//  viewer.dataSources.add(ds);
+//  viewer.zoomTo(ds);
+//});
             // (The qsoDataSource remains unchanged.)
             //var qso_url =
             //  'https://raw.githubusercontent.com/hcarter333/rm-rbn-history/refs/heads/main/maps/025_02_16_US_4758_Pony_Express_Short.czml';
@@ -577,16 +1258,16 @@ ORDER BY timestamp ASC;
           layerPanel.innerHTML =
             '<label><input id="toggleGlotec" type="checkbox" checked> Glotec Map</label>' +
             '<label><input id="toggleFof2" type="checkbox" checked> FOF2 Glotec Map</label>';
-          document.body.appendChild(layerPanel);
+          //document.body.appendChild(layerPanel);
 
-          document.getElementById("toggleGlotec").addEventListener("change", function (e) {
-            if (glotecDataSource) glotecDataSource.show = e.target.checked;
-            updateLegends();
-          });
-          document.getElementById("toggleFof2").addEventListener("change", function (e) {
-            if (fof2DataSource) fof2DataSource.show = e.target.checked;
-            updateLegends();
-          });
+          //document.getElementById("toggleGlotec").addEventListener("change", function (e) {
+          //  if (glotecDataSource) glotecDataSource.show = e.target.checked;
+          //  updateLegends();
+          //});
+          //document.getElementById("toggleFof2").addEventListener("change", function (e) {
+          //  if (fof2DataSource) fof2DataSource.show = e.target.checked;
+          //  updateLegends();
+          //});
 
           // Create a panel for inputting update parameters.
           var updatePanel = document.createElement("div");
@@ -630,62 +1311,146 @@ eleNowLabel.style.marginTop = "4px";
 eleNowLabel.textContent = "ele now: ";
 updatePanel.appendChild(eleNowLabel);
 
+
+
+
 // --- Wire up the update elevation button ---
 var fileHeight = "";
 var fndFileHeight = 0;
 var finalHeight = "";
-document.getElementById("updateEle").addEventListener("click", function() {
-  // Parse the elevation offset (can be negative)
+
+// helper: return a new Cartesian3 with height + delta
+function bumpHeight(cartesian, delta) {
+  const c = Cesium.Cartographic.fromCartesian(cartesian);
+  const newH = c.height + delta;
+  return Cesium.Ellipsoid.WGS84.cartographicToCartesian(
+    new Cesium.Cartographic(c.longitude, c.latitude, newH)
+  );
+}
+
+
+
+document.getElementById("updateEle").addEventListener("click", function () {
   const delta = parseFloat(document.getElementById("qthElev").value);
   if (isNaN(delta)) {
     console.error("Invalid elevation offset");
     return;
   }
-  qsoDataSource.entities.values.forEach(entity => {
-    if (
-      entity.id &&
-      entity.id.includes("f2") &&
-      !entity.id.includes("f2down") &&
-      entity.polyline &&
-      entity.polyline.positions
-    ) {
-      // 1) pull out the old Cartesian3 positions
-      const positions = entity.polyline.positions.getValue();
 
-      if (positions.length > 0) {
-        // 2) convert the *first* point back to Cartographic (lat, lon, height)
+  // Prefer the panel’s visible list; otherwise fall back to scanning the viewer
+  const visibleSources = (typeof layerPanel?.getVisibleSources === "function")
+    ? layerPanel.getVisibleSources()
+    : (() => {
+        const out = [];
+        const coll = viewer.dataSources;
+        for (let i = 0; i < coll.length; i++) {
+          const src = coll.get(i);
+          if (src && src.show !== false) out.push(src);
+        }
+        return out;
+      })();
+
+  let lastNewHeight; // to update the "ele now" label
+
+  let srcCnt = 0
+  visibleSources.forEach((src) => {
+    let entityCnt = 0;
+    console.log("updating " + src)
+    const entities = src?.entities?.values;
+    if (!entities || !entities.length) return;
+    console.log("source " + srcCnt);
+    srcCnt++;
+    entities.forEach((entity) => {
+      //original F2 start adjustment
+      if (
+        (entity?.id?.includes("f2") &&
+        !entity.id.includes("f2down") &&
+        entity.polyline?.positions) || 
+        (entity.polyline?.positions)
+      ) {
+        const positions = entity.polyline.positions.getValue(); // assumes Constant/Callback with no time needed
+        if (!Array.isArray(positions) || positions.length === 0) return;
+
         const oldCarto = Cesium.Cartographic.fromCartesian(positions[0]);
+        const newHeight = oldCarto.height + delta;
 
-        // 3) compute a new height
-        newHeight = oldCarto.height + delta;
-        finalHeight = newHeight.toString();
-
-        if(fndFileHeight == 0){
-            fileHeight = oldCarto.height;
-            fndFileHeight = 1;
+        // Preserve your existing globals/flags behavior
+        if (typeof fndFileHeight !== "undefined" && fndFileHeight === 0) {
+          window.fileHeight = oldCarto.height;
+          window.fndFileHeight = 1;
         }
 
-        // 4) rebuild just that first point in Cartesian using the original lat/lon
         const newCartesian = Cesium.Ellipsoid.WGS84.cartographicToCartesian(
           new Cesium.Cartographic(oldCarto.longitude, oldCarto.latitude, newHeight)
         );
-        positions[0] = newCartesian;
 
-        // 5) re‐assign the array so Cesium notices the change
+        positions[0] = newCartesian;
+        // Re-assign so Cesium picks up the change
         entity.polyline.positions = new Cesium.ConstantProperty(positions);
+
+        lastNewHeight = newHeight;
       }
+      //wedge adjustment
+      if (
+        (!entity?.id?.includes("f2") &&
+        !entity.id.includes("f2down") &&
+        entity.polyline?.positions)
+      ) {
+        // handle ConstantProperty / CallbackProperty / etc.
+        const posVal = entity.polyline.positions.getValue();
+
+        if (Array.isArray(posVal) && posVal.length) {
+          // bump EVERY vertex
+          const bumped = posVal.map(p => bumpHeight(p, delta));
+
+          // optional: capture original height once
+          if (typeof fndFileHeight !== "undefined" && fndFileHeight === 0) {
+            const firstCarto = Cesium.Cartographic.fromCartesian(posVal[0]);
+            window.fileHeight = firstCarto.height;
+            window.fndFileHeight = 1;
+          }
+
+          // reassign so Cesium notices
+          if (entity.polyline.positions instanceof Cesium.ConstantProperty) {
+            entity.polyline.positions.setValue(bumped);
+          } else {
+            entity.polyline.positions = new Cesium.ConstantProperty(bumped);
+          }
+
+          lastNewHeight = Cesium.Cartographic.fromCartesian(bumped[0]).height;
+        }
+      }
+    if(entity?.position){
+        const oldCartop = Cesium.Cartographic.fromCartesian(entity.position.getValue());
+        const newHeightp = oldCartop.height + delta;
+
+        // Preserve your existing globals/flags behavior
+        if (typeof fndFileHeight !== "undefined" && fndFileHeight === 0) {
+          window.fileHeight = oldCarto.height;
+          window.fndFileHeight = 1;
+        }
+
+        const newCartesian = Cesium.Ellipsoid.WGS84.cartographicToCartesian(
+          new Cesium.Cartographic(oldCartop.longitude, oldCartop.latitude, newHeightp)
+        );
+
+        position = newCartesian;
+        // Re-assign so Cesium picks up the change
+        entity.position = new Cesium.ConstantProperty(position);
+
+        lastNewHeight = newHeight;
+
     }
+    });
   });
 
-  // Update the "ele now" label
-  if (newHeight !== undefined) {
-    document.getElementById("eleNow").textContent =
-      "ele now: " + newHeight + " m";
+  if (lastNewHeight !== undefined) {
+    document.getElementById("eleNow").textContent = "ele now: " + lastNewHeight + " m";
   }
 
-  // re‐draw immediately
   viewer.scene.requestRender();
 });
+
 
 document.getElementById('downloadQsoButton').addEventListener('click', async () => {
   try {
@@ -723,6 +1488,28 @@ document.getElementById('downloadQsoButton').addEventListener('click', async () 
     console.error('Failed to download QSO CZML:', e);
     alert('Error downloading QSO data: ' + e.message);
   }
+
+
+  //Now, download all the other layers
+
+  // Prefer the panel’s visible list; otherwise fall back to scanning the viewer
+  const visibleSources = (typeof layerPanel?.getVisibleSources === "function")
+    ? layerPanel.getVisibleSources()
+    : (() => {
+        const out = [];
+        const coll = viewer.dataSources;
+        for (let i = 0; i < coll.length; i++) {
+          const src = coll.get(i);
+          if (src && src.show !== false) out.push(src);
+        }
+        return out;
+      })();
+
+
+  visibleSources.forEach((src) => {
+    srcName = src.name;
+    saveDataSourceToCZML(src, srcName + ".czml", viewer);
+  });
 });
 
 
