@@ -1,0 +1,61 @@
+{
+  "id": "way-2002",
+  "name": "OSM Way 2002",
+  "version": "1.0",
+  "clock": {
+    "interval": "2020-01-01T00:00:00Z/2020-01-01T00:01:00Z",
+    "currentTime": "2020-01-01T00:00:00Z",
+    "multiplier": 1
+  },
+  "entities": [
+    {
+      "id": "building-2002",
+      "name": "Building 2002",
+      "polygon": {
+        "positions": {
+          "cartographicDegrees": [
+            -122.3985,
+            37.795,
+            0.0,
+            -122.3979,
+            37.795,
+            0.0,
+            -122.3979,
+            37.7954,
+            0.0,
+            -122.3985,
+            37.7954,
+            0.0,
+            -122.3985,
+            37.795,
+            0.0
+          ]
+        },
+        "perPositionHeight": false,
+        "extrudedHeight": 15.0,
+        "height": 0.0,
+        "material": {
+          "solidColor": {
+            "color": {
+              "rgba": [
+                255,
+                165,
+                0,
+                160
+              ]
+            }
+          }
+        },
+        "outline": true,
+        "outlineColor": {
+          "rgba": [
+            0,
+            0,
+            0,
+            255
+          ]
+        }
+      }
+    }
+  ]
+}
