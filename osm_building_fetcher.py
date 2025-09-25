@@ -74,7 +74,9 @@ def _ensure_closed_ring(nodes: List[Dict[str, float]]) -> List[Dict[str, float]]
     return nodes
 
 
-def _build_czml_document(way_id: int, coordinates: List[Dict[str, float]], height: Optional[float]) -> Dict:
+def _build_czml_document(
+    way_id: int, coordinates: List[Dict[str, float]], height: Optional[float]
+) -> List[Dict]:
     if height is None:
         height = 10.0
 
@@ -83,8 +85,8 @@ def _build_czml_document(way_id: int, coordinates: List[Dict[str, float]], heigh
     for coord in coordinates:
         cartographic.extend([coord["lng"], coord["lat"], 0.0])
 
-    return {
-        "id": f"way-{way_id}",
+    document_packet = {
+        "id": "document",
         "name": f"OSM Way {way_id}",
         "version": "1.0",
         "clock": {
@@ -92,32 +94,33 @@ def _build_czml_document(way_id: int, coordinates: List[Dict[str, float]], heigh
             "currentTime": "2020-01-01T00:00:00Z",
             "multiplier": 1,
         },
-        "entities": [
-            {
-                "id": f"building-{way_id}",
-                "name": f"Building {way_id}",
-                "polygon": {
-                    "positions": {
-                        "cartographicDegrees": cartographic,
-                    },
-                    "perPositionHeight": False,
-                    "extrudedHeight": height,
-                    "height": 0.0,
-                    "material": {
-                        "solidColor": {
-                            "color": {
-                                "rgba": [255, 165, 0, 160],
-                            }
-                        }
-                    },
-                    "outline": True,
-                    "outlineColor": {
-                        "rgba": [0, 0, 0, 255]
-                    },
-                },
-            }
-        ],
     }
+
+    building_packet = {
+        "id": f"building-{way_id}",
+        "name": f"Building {way_id}",
+        "polygon": {
+            "positions": {
+                "cartographicDegrees": cartographic,
+            },
+            "perPositionHeight": False,
+            "extrudedHeight": height,
+            "height": 0.0,
+            "material": {
+                "solidColor": {
+                    "color": {
+                        "rgba": [255, 165, 0, 160],
+                    }
+                }
+            },
+            "outline": True,
+            "outlineColor": {
+                "rgba": [0, 0, 0, 255]
+            },
+        },
+    }
+
+    return [document_packet, building_packet]
 
 
 def fetch_osm_buildings(

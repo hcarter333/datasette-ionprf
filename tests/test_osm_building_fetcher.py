@@ -51,7 +51,10 @@ def test_fetch_osm_buildings_generates_expected_czml(tmp_path: Path, sample_rect
         assert path.is_file()
         content = json.loads(path.read_text())
         way_id = filename.split("_")[1].split(".")[0]
-        assert content["id"] == f"way-{way_id}"
+
+        assert isinstance(content, list)
+        assert content[0]["id"] == "document"
+        assert content[1]["id"] == f"building-{way_id}"
 
         expected_path = Path("czml_output") / filename
         assert expected_path.is_file()
