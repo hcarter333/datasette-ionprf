@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OSM Building CZML Bench</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css"
+    />
+    <style>
+      html,
+      body,
+      #cesiumContainer {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        font-family: sans-serif;
+      }
+      #toolbar {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(42, 42, 42, 0.8);
+        padding: 10px;
+        border-radius: 4px;
+        color: white;
+        z-index: 1;
+      }
+      #toolbar button {
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar">
+      <label>
+        CZML Manifest
+        <input type="text" id="manifestPath" value="../czml_output/czml_manifest.json" size="45" />
+      </label>
+      <br />
+      <label>
+        Ion Token
+        <input type="text" id="ionToken" placeholder="Set CESIUM ION TOKEN" size="45" />
+      </label>
+      <div style="margin-top: 8px;">
+        <button id="loadButton">Load Buildings</button>
+        <button id="captureButton" disabled>Capture PNG</button>
+      </div>
+      <div id="status" style="margin-top: 6px;"></div>
+    </div>
+    <div id="cesiumContainer"></div>
+    <script>
+      const viewer = new Cesium.Viewer("cesiumContainer", {
+        animation: false,
+        timeline: false,
+        terrain: Cesium.Terrain.fromWorldTerrain(),
+        baseLayerPicker: false,
+      });
+
+      async function loadCzmlSources(manifestUrl) {
+        const response = await fetch(manifestUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${manifestUrl}: ${response.status} ${response.statusText}`);
+        }
+        const manifest = await response.json();
+        if (!manifest.files || !manifest.files.length) {
+          throw new Error("CZML manifest does not contain any files");
+        }
+        const sources = [];
+        for (const file of manifest.files) {
+          const url = new URL(file, manifestUrl).toString();
+          const source = await Cesium.CzmlDataSource.load(url);
+          sources.push(source);
+        }
+        return sources;
+      }
+
+      async function loadBuildings() {
+        const statusEl = document.getElementById("status");
+        const manifestUrl = document.getElementById("manifestPath").value.trim();
+        const ionToken = document.getElementById("ionToken").value.trim();
+        statusEl.textContent = "Loading CZML files...";
+        statusEl.style.color = "#fff";
+        try {
+          if (ionToken) {
+            Cesium.Ion.defaultAccessToken = ionToken;
+          }
+          const sources = await loadCzmlSources(manifestUrl);
+          viewer.dataSources.removeAll();
+          const loadPromises = sources.map((source) => viewer.dataSources.add(source));
+          await Promise.all(loadPromises);
+          statusEl.textContent = `Loaded ${sources.length} CZML data source(s).`;
+
+          const boundingSpheres = [];
+          for (const source of sources) {
+            for (const entity of source.entities.values) {
+              const polygon = entity.polygon;
+              if (!Cesium.defined(polygon)) {
+                continue;
+              }
+              const hierarchy = polygon.hierarchy.getValue(Cesium.JulianDate.now());
+              if (!hierarchy) {
+                continue;
+              }
+              const positions = hierarchy.positions;
+              if (positions && positions.length) {
+                boundingSpheres.push(Cesium.BoundingSphere.fromPoints(positions));
+              }
+            }
+          }
+
+          if (boundingSpheres.length) {
+            const combined = Cesium.BoundingSphere.fromBoundingSpheres(boundingSpheres);
+            if (Cesium.defined(combined)) {
+              await viewer.camera.flyToBoundingSphere(combined, { duration: 0.0 });
+            }
+          }
+          document.getElementById("captureButton").disabled = false;
+        } catch (error) {
+          console.error(error);
+          statusEl.textContent = error.message;
+          statusEl.style.color = "#ff6";
+        }
+      }
+
+      function capturePng() {
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = "Capturing screenshot...";
+        viewer.scene.requestRender();
+        setTimeout(() => {
+          try {
+            const canvas = viewer.scene.canvas;
+            const dataUrl = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            link.download = "building-review.png";
+            link.href = dataUrl;
+            link.click();
+            statusEl.textContent = "PNG capture downloaded.";
+            statusEl.style.color = "#fff";
+          } catch (error) {
+            statusEl.textContent = `Capture failed: ${error.message}`;
+            statusEl.style.color = "#ff6";
+          }
+        }, 300);
+      }
+
+      document.getElementById("loadButton").addEventListener("click", loadBuildings);
+      document.getElementById("captureButton").addEventListener("click", capturePng);
+    </script>
+  </body>
+</html>
