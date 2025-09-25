@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OSM Building CZML Bench</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css"
+    />
+    <style>
+      html,
+      body,
+      #cesiumContainer {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        font-family: sans-serif;
+      }
+      #toolbar {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(42, 42, 42, 0.8);
+        padding: 10px;
+        border-radius: 4px;
+        color: white;
+        z-index: 1;
+      }
+      #toolbar button {
+        margin-right: 8px;
+      }
+      #toolbar .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar">
+      <label>
+        CZML Manifest
+        <input type="text" id="manifestPath" value="../czml_output/czml_manifest.json" size="45" />
+      </label>
+      <br />
+      <label>
+        Ion Token
+        <input type="text" id="ionToken" placeholder="Set CESIUM ION TOKEN" size="45" />
+      </label>
+      <div class="button-row">
+        <button id="loadButton">Load Buildings</button>
+        <button id="captureButton" disabled>Capture PNG</button>
+        <button id="downloadCombinedButton" disabled>Download Combined CZML</button>
+      </div>
+      <div id="status" style="margin-top: 6px;"></div>
+    </div>
+    <div id="cesiumContainer"></div>
+    <script>
+      class CesiumLayerPanel {
+        /**
+         * @param {Cesium.Viewer} viewer
+         * @param {Object} [opts]
+         * @param {string|HTMLElement} [opts.panel]         Selector or element for the panel container (created if missing).
+         * @param {string} [opts.listSelector]              Selector for the inner list (created if missing). Default '#dsList'.
+         * @param {(src: any)=>boolean} [opts.filter]       Only show DataSources where filter(src) === true.
+         * @param {string} [opts.title]                     Panel title. Default 'Data Sources'.
+         */
+        constructor(viewer, opts = {}) {
+          if (!viewer) throw new Error("CesiumLayerPanel: viewer is required");
+          this.viewer = viewer;
+
+          // Options
+          this.opts = {
+            panel: "#controlPanel",
+            listSelector: "#dsList",
+            filter: null,
+            title: "Data Sources",
+            ...opts,
+          };
+
+          // DOM
+          this.panel = this._resolvePanel(this.opts.panel);
+          this.list = this._resolveList(this.panel, this.opts.listSelector);
+
+          // State
+          this._idToSource = new Map();
+          this._perSourceListeners = new Map();
+          this._uid = 0;
+          this._renderScheduled = false;
+
+          // Bind handlers so we can remove them later
+          this._onPanelClick = this._onPanelClick.bind(this);
+          this._onDataSourceAdded = this._onDataSourceAdded.bind(this);
+          this._onDataSourceRemoved = this._onDataSourceRemoved.bind(this);
+
+          // Wire events
+          this.panel.addEventListener("click", this._onPanelClick);
+          const coll = this.viewer.dataSources;
+          coll.dataSourceAdded.addEventListener(this._onDataSourceAdded);
+          coll.dataSourceRemoved.addEventListener(this._onDataSourceRemoved);
+
+          // Attach listeners to existing sources (if any)
+          for (let i = 0; i < coll.length; i++) {
+            const src = coll.get(i);
+            this._attachSourceListeners(src);
+          }
+
+          // Initial paint
+          this._render();
+        }
+
+        /** Force a re-render of the panel. */
+        refresh() {
+          this._render();
+        }
+
+        // Public helper: all currently visible data sources (respects opts.filter)
+        getVisibleSources() {
+          const out = [];
+          const coll = this.viewer.dataSources;
+          for (let i = 0; i < coll.length; i++) {
+            const src = coll.get(i);
+            if (typeof this.opts.filter === "function" && !this.opts.filter(src)) continue;
+            if (src && src.show !== false) out.push(src);
+          }
+          return out;
+        }
+
+        /** Clean up all listeners and DOM references created by this panel. */
+        destroy() {
+          // Remove collection listeners
+          const coll = this.viewer.dataSources;
+          coll.dataSourceAdded.removeEventListener(this._onDataSourceAdded);
+          coll.dataSourceRemoved.removeEventListener(this._onDataSourceRemoved);
+
+          // Remove per-source listeners
+          for (const [src, fns] of this._perSourceListeners.entries()) {
+            if (fns.onLoading && src?.loadingEvent?.removeEventListener) {
+              src.loadingEvent.removeEventListener(fns.onLoading);
+            }
+            if (fns.onChanged && src?.changedEvent?.removeEventListener) {
+              src.changedEvent.removeEventListener(fns.onChanged);
+            }
+          }
+          this._perSourceListeners.clear();
+
+          // Remove panel listener (keep the element in DOM)
+          this.panel.removeEventListener("click", this._onPanelClick);
+
+          // Clear UI state maps
+          this._idToSource.clear();
+        }
+
+        // -------------------- private helpers --------------------
+
+        _resolvePanel(panelOpt) {
+          let el = null;
+          if (typeof panelOpt === "string") el = document.querySelector(panelOpt);
+          else if (panelOpt instanceof HTMLElement) el = panelOpt;
+
+          if (!el) {
+            el = document.createElement("div");
+            el.id = "controlPanel";
+            Object.assign(el.style, {
+              position: "absolute",
+              top: "10px",
+              right: "10px",
+              background: "rgba(255,255,255,0.92)",
+              padding: "10px",
+              borderRadius: "6px",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+              fontSize: "14px",
+              zIndex: 1000,
+              maxHeight: "80vh",
+              overflowY: "auto",
+              width: "240px",
+            });
+            const title = document.createElement("strong");
+            title.textContent = this.opts.title || "Data Sources";
+            title.style.display = "block";
+            title.style.marginBottom = "8px";
+            el.appendChild(title);
+            document.body.appendChild(el);
+          } else {
+            el.style.position = "absolute";
+            el.style.top = "10px";
+            el.style.right = "10px";
+            el.style.left = "auto";
+            el.style.maxHeight = "80vh";
+            el.style.overflowY = "auto";
+
+            const first = el.querySelector("strong");
+            if (first) first.textContent = this.opts.title || "Data Sources";
+            else {
+              const title = document.createElement("strong");
+              title.textContent = this.opts.title || "Data Sources";
+              title.style.display = "block";
+              title.style.marginBottom = "8px";
+              el.prepend(title);
+            }
+          }
+          return el;
+        }
+
+        _resolveList(panel, listSelector) {
+          const sel = listSelector || "#dsList";
+          let list = panel.querySelector(sel);
+          if (!list) {
+            list = document.createElement("div");
+            list.id = sel.startsWith("#") ? sel.slice(1) : sel;
+            panel.appendChild(list);
+          }
+          return list;
+        }
+
+        _scheduleRender() {
+          if (this._renderScheduled) return;
+          this._renderScheduled = true;
+          Promise.resolve().then(() => {
+            this._renderScheduled = false;
+            this._render();
+          });
+        }
+
+        _render() {
+          this._idToSource.clear();
+          this.list.innerHTML = "";
+
+          const dsArray = [];
+          const coll = this.viewer.dataSources;
+          for (let i = 0; i < coll.length; i++) dsArray.push(coll.get(i));
+
+          const filtered = typeof this.opts.filter === "function" ? dsArray.filter(this.opts.filter) : dsArray;
+
+          if (!filtered.length) {
+            const empty = document.createElement("div");
+            empty.textContent = "No data sources loaded.";
+            empty.style.opacity = "0.7";
+            this.list.appendChild(empty);
+            return;
+          }
+
+          const frag = document.createDocumentFragment();
+          filtered.forEach((src, idx) => {
+            const row = document.createElement("label");
+            Object.assign(row.style, {
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              margin: "6px 0",
+            });
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = src.show !== false;
+            const id = `ds-${++this._uid}`;
+            cb.dataset.dsuid = id;
+            cb.setAttribute("aria-label", "toggle data source visibility");
+
+            const name = document.createElement("span");
+            name.textContent = src?.name && String(src.name).trim() ? String(src.name).trim() : (src?.constructor?.name || "DataSource") + " " + (idx + 1);
+
+            row.style.opacity = src?.isLoading ? "0.5" : "1";
+            row.appendChild(cb);
+            row.appendChild(name);
+            frag.appendChild(row);
+
+            this._idToSource.set(id, src);
+          });
+
+          this.list.appendChild(frag);
+        }
+
+        _attachSourceListeners(src) {
+          const fns = {};
+          if (src?.loadingEvent?.addEventListener) {
+            fns.onLoading = () => this._scheduleRender();
+            src.loadingEvent.addEventListener(fns.onLoading);
+          }
+          if (src?.changedEvent?.addEventListener) {
+            fns.onChanged = () => this._scheduleRender();
+            src.changedEvent.addEventListener(fns.onChanged);
+          }
+          if (Object.keys(fns).length) {
+            this._perSourceListeners.set(src, fns);
+          }
+        }
+
+        _detachSourceListeners(src) {
+          const fns = this._perSourceListeners.get(src);
+          if (!fns) return;
+          if (fns.onLoading && src?.loadingEvent?.removeEventListener) {
+            src.loadingEvent.removeEventListener(fns.onLoading);
+          }
+          if (fns.onChanged && src?.changedEvent?.removeEventListener) {
+            src.changedEvent.removeEventListener(fns.onChanged);
+          }
+          this._perSourceListeners.delete(src);
+        }
+
+        _onDataSourceAdded(collection, src) {
+          this._attachSourceListeners(src);
+          this._scheduleRender();
+        }
+
+        _onDataSourceRemoved(collection, src) {
+          this._detachSourceListeners(src);
+          this._scheduleRender();
+        }
+
+        _onPanelClick(evt) {
+          const t = evt.target;
+          if (!(t instanceof HTMLInputElement) || t.type !== "checkbox") return;
+          const id = t.dataset.dsuid;
+          if (!id) return;
+          const src = this._idToSource.get(id);
+          if (!src) return;
+          src.show = !!t.checked;
+          this.viewer.scene.requestRender();
+        }
+      }
+
+      async function dataSourceToCzmlPackets(dataSource, viewer) {
+        if (!dataSource) throw new Error("dataSourceToCzmlPackets: dataSource is required");
+        const time = viewer?.clock?.currentTime;
+
+        const toRgba = (c) => {
+          if (!c) return undefined;
+          const r = Math.round(c.red * 255);
+          const g = Math.round(c.green * 255);
+          const b = Math.round(c.blue * 255);
+          const a = Math.round((c.alpha ?? 1) * 255);
+          return [r, g, b, a];
+        };
+
+        const cartesianToCartoDegrees = (cart) => {
+          const carto = Cesium.Cartographic.fromCartesian(cart);
+          return [Cesium.Math.toDegrees(carto.longitude), Cesium.Math.toDegrees(carto.latitude), carto.height];
+        };
+
+        const writePositionProperty = (posProp) => {
+          if (!posProp) return undefined;
+
+          if (posProp instanceof Cesium.ConstantPositionProperty || posProp instanceof Cesium.ConstantProperty || posProp instanceof Cesium.Cartesian3) {
+            const cart = posProp.getValue ? posProp.getValue(time) : posProp;
+            if (!cart) return undefined;
+            return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+          }
+
+          if (posProp instanceof Cesium.SampledPositionProperty) {
+            const times = posProp._times || [];
+            if (!times.length) return undefined;
+
+            const epoch = Cesium.JulianDate.toIso8601(times[0]);
+            const samples = [];
+            for (let i = 0; i < times.length; i++) {
+              const t = times[i];
+              const seconds = Cesium.JulianDate.secondsDifference(t, times[0]);
+              const cart = posProp.getValue(t);
+              const [lon, lat, h] = cartesianToCartoDegrees(cart);
+              samples.push(seconds, lon, lat, h);
+            }
+            return { cartographicDegrees: { epoch, number: samples } };
+          }
+
+          if (posProp instanceof Cesium.CallbackProperty) {
+            const cart = posProp.getValue(time);
+            if (!cart) return undefined;
+            return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+          }
+
+          if (typeof posProp.getValue === "function") {
+            const cart = posProp.getValue(time);
+            if (!cart) return undefined;
+            return { cartographicDegrees: cartesianToCartoDegrees(cart) };
+          }
+          return undefined;
+        };
+
+        const writePolylinePositions = (positionsProp) => {
+          let arr = positionsProp;
+          if (positionsProp?.getValue) arr = positionsProp.getValue(time);
+          if (!Array.isArray(arr) || !arr.length) return undefined;
+          const flat = [];
+          for (const p of arr) {
+            const [lon, lat, h] = cartesianToCartoDegrees(p);
+            flat.push(lon, lat, h);
+          }
+          return { cartographicDegrees: flat };
+        };
+
+        const writePolygonHierarchy = (hierarchyProp) => {
+          let hierarchy = hierarchyProp;
+          if (hierarchyProp?.getValue) hierarchy = hierarchyProp.getValue(time);
+          if (!hierarchy) return undefined;
+          const positions = hierarchy.positions || hierarchy;
+          if (!Array.isArray(positions) || !positions.length) return undefined;
+          const flat = [];
+          for (const p of positions) {
+            const [lon, lat, h] = cartesianToCartoDegrees(p);
+            flat.push(lon, lat, h);
+          }
+          return { cartographicDegrees: flat };
+        };
+
+        const packets = [];
+        packets.push({ id: "document", name: dataSource?.name || "Combined Buildings", version: "1.0" });
+
+        const entities = dataSource.entities.values || [];
+        for (const entity of entities) {
+          const packet = { id: entity.id || Cesium.createGuid() };
+
+          if (entity.name) packet.name = entity.name;
+          if (entity.description) {
+            const desc = entity.description.getValue ? entity.description.getValue(time) : entity.description;
+            if (desc) packet.description = desc;
+          }
+
+          if (entity.position) {
+            const pos = writePositionProperty(entity.position);
+            if (pos) packet.position = pos;
+          }
+
+          if (entity.polygon) {
+            packet.polygon = {};
+            const hierarchy = writePolygonHierarchy(entity.polygon.hierarchy);
+            if (hierarchy) packet.polygon.positions = hierarchy;
+            const material = entity.polygon.material?.getValue ? entity.polygon.material.getValue(time) : entity.polygon.material;
+            if (material?.color) packet.polygon.material = { solidColor: { color: { rgba: toRgba(material.color) } } };
+            const outlineColor = entity.polygon.outlineColor?.getValue ? entity.polygon.outlineColor.getValue(time) : entity.polygon.outlineColor;
+            if (outlineColor) packet.polygon.outlineColor = { rgba: toRgba(outlineColor) };
+            if (typeof entity.polygon.outline === "boolean") packet.polygon.outline = entity.polygon.outline;
+            if (typeof entity.polygon.outlineWidth === "number") packet.polygon.outlineWidth = entity.polygon.outlineWidth;
+            if (typeof entity.polygon.extrudedHeight === "number") packet.polygon.extrudedHeight = entity.polygon.extrudedHeight;
+            else if (entity.polygon.extrudedHeight?.getValue) packet.polygon.extrudedHeight = entity.polygon.extrudedHeight.getValue(time);
+            if (typeof entity.polygon.height === "number") packet.polygon.height = entity.polygon.height;
+            else if (entity.polygon.height?.getValue) packet.polygon.height = entity.polygon.height.getValue(time);
+          }
+
+          if (entity.polyline) {
+            packet.polyline = {};
+            const positions = writePolylinePositions(entity.polyline.positions);
+            if (positions) packet.polyline.positions = positions;
+            const material = entity.polyline.material?.getValue ? entity.polyline.material.getValue(time) : entity.polyline.material;
+            if (material?.color) packet.polyline.material = { solidColor: { color: { rgba: toRgba(material.color) } } };
+            if (typeof entity.polyline.width === "number") packet.polyline.width = entity.polyline.width;
+          }
+
+          packets.push(packet);
+        }
+
+        return packets;
+      }
+
+      async function saveDataSourceToCZML(dataSource, filename = "export.czml", viewer) {
+        const packets = await dataSourceToCzmlPackets(dataSource, viewer);
+        const blob = new Blob([JSON.stringify(packets, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 0);
+      }
+
+      async function downloadCombinedVisibleSources(panel, viewer) {
+        const visibleSources = typeof panel?.getVisibleSources === "function" ? panel.getVisibleSources() : (() => {
+          const out = [];
+          const coll = viewer.dataSources;
+          for (let i = 0; i < coll.length; i++) {
+            const src = coll.get(i);
+            if (src && src.show !== false) out.push(src);
+          }
+          return out;
+        })();
+
+        if (!visibleSources.length) {
+          throw new Error("No visible data sources to export.");
+        }
+
+        const combinedPackets = [];
+        let documentWritten = false;
+        for (const src of visibleSources) {
+          const packets = await dataSourceToCzmlPackets(src, viewer);
+          for (const packet of packets) {
+            if (packet.id === "document") {
+              if (!documentWritten) {
+                combinedPackets.push({ ...packet, name: "Combined Building Selection" });
+                documentWritten = true;
+              }
+            } else {
+              combinedPackets.push(packet);
+            }
+          }
+        }
+
+        if (!documentWritten) {
+          combinedPackets.unshift({ id: "document", name: "Combined Building Selection", version: "1.0" });
+        }
+
+        const blob = new Blob([JSON.stringify(combinedPackets, null, 2)], { type: "application/json" });
+        const link = document.createElement("a");
+        link.download = "combined_buildings.czml";
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 0);
+      }
+
+      const viewer = new Cesium.Viewer("cesiumContainer", {
+        animation: false,
+        timeline: false,
+        terrain: Cesium.Terrain.fromWorldTerrain(),
+        baseLayerPicker: false,
+      });
+
+      const layerPanel = new CesiumLayerPanel(viewer);
+
+      async function loadCzmlSources(manifestUrl) {
+        const response = await fetch(manifestUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${manifestUrl}: ${response.status} ${response.statusText}`);
+        }
+        const manifest = await response.json();
+        if (!manifest.files || !manifest.files.length) {
+          throw new Error("CZML manifest does not contain any files");
+        }
+        const sources = [];
+        for (const file of manifest.files) {
+          const url = new URL(file, manifestUrl).toString();
+          const source = await Cesium.CzmlDataSource.load(url);
+          sources.push(source);
+        }
+        return sources;
+      }
+
+      async function loadBuildings() {
+        const statusEl = document.getElementById("status");
+        const manifestUrl = document.getElementById("manifestPath").value.trim();
+        const ionToken = document.getElementById("ionToken").value.trim();
+        statusEl.textContent = "Loading CZML files...";
+        statusEl.style.color = "#fff";
+        try {
+          if (ionToken) {
+            Cesium.Ion.defaultAccessToken = ionToken;
+          }
+          const sources = await loadCzmlSources(manifestUrl);
+          viewer.dataSources.removeAll();
+          const loadPromises = sources.map((source) => viewer.dataSources.add(source));
+          await Promise.all(loadPromises);
+          statusEl.textContent = `Loaded ${sources.length} CZML data source(s).`;
+
+          const boundingSpheres = [];
+          for (const source of sources) {
+            for (const entity of source.entities.values) {
+              const polygon = entity.polygon;
+              if (!Cesium.defined(polygon)) {
+                continue;
+              }
+              const hierarchy = polygon.hierarchy.getValue(Cesium.JulianDate.now());
+              if (!hierarchy) {
+                continue;
+              }
+              const positions = hierarchy.positions;
+              if (positions && positions.length) {
+                boundingSpheres.push(Cesium.BoundingSphere.fromPoints(positions));
+              }
+            }
+          }
+
+          if (boundingSpheres.length) {
+            const combined = Cesium.BoundingSphere.fromBoundingSpheres(boundingSpheres);
+            if (Cesium.defined(combined)) {
+              await viewer.camera.flyToBoundingSphere(combined, { duration: 0.0 });
+            }
+          }
+          document.getElementById("captureButton").disabled = false;
+          document.getElementById("downloadCombinedButton").disabled = false;
+        } catch (error) {
+          console.error(error);
+          statusEl.textContent = error.message;
+          statusEl.style.color = "#ff6";
+        }
+      }
+
+      function capturePng() {
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = "Capturing screenshot...";
+        viewer.scene.requestRender();
+        setTimeout(() => {
+          try {
+            const canvas = viewer.scene.canvas;
+            const dataUrl = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            link.download = "building-review.png";
+            link.href = dataUrl;
+            link.click();
+            statusEl.textContent = "PNG capture downloaded.";
+            statusEl.style.color = "#fff";
+          } catch (error) {
+            statusEl.textContent = `Capture failed: ${error.message}`;
+            statusEl.style.color = "#ff6";
+          }
+        }, 300);
+      }
+
+      document.getElementById("loadButton").addEventListener("click", loadBuildings);
+      document.getElementById("captureButton").addEventListener("click", capturePng);
+      document.getElementById("downloadCombinedButton").addEventListener("click", async () => {
+        const statusEl = document.getElementById("status");
+        statusEl.textContent = "Preparing CZML export...";
+        statusEl.style.color = "#fff";
+        try {
+          await downloadCombinedVisibleSources(layerPanel, viewer);
+          statusEl.textContent = "Combined CZML downloaded.";
+        } catch (err) {
+          statusEl.textContent = err.message;
+          statusEl.style.color = "#ff6";
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,61 @@
+[
+  {
+    "id": "document",
+    "name": "OSM Way 2001",
+    "version": "1.0",
+    "clock": {
+      "interval": "2020-01-01T00:00:00Z/2020-01-01T00:01:00Z",
+      "currentTime": "2020-01-01T00:00:00Z",
+      "multiplier": 1
+    }
+  },
+  {
+    "id": "building-2001",
+    "name": "Building 2001",
+    "polygon": {
+      "positions": {
+        "cartographicDegrees": [
+          -122.3999,
+          37.7955,
+          0.0,
+          -122.3992,
+          37.7955,
+          0.0,
+          -122.3992,
+          37.796,
+          0.0,
+          -122.3999,
+          37.796,
+          0.0,
+          -122.3999,
+          37.7955,
+          0.0
+        ]
+      },
+      "perPositionHeight": false,
+      "extrudedHeight": 18.0,
+      "height": 0.0,
+      "material": {
+        "solidColor": {
+          "color": {
+            "rgba": [
+              255,
+              165,
+              0,
+              160
+            ]
+          }
+        }
+      },
+      "outline": true,
+      "outlineColor": {
+        "rgba": [
+          0,
+          0,
+          0,
+          255
+        ]
+      }
+    }
+  }
+]
