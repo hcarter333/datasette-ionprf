@@ -51,15 +51,18 @@
         Ion Token
         <input type="text" id="ionToken" placeholder="Set CESIUM ION TOKEN" size="45" />
       </label>
+
       <div class="button-row">
         <button id="loadButton">Load Buildings</button>
         <button id="captureButton" disabled>Capture PNG</button>
         <button id="downloadCombinedButton" disabled>Download Combined CZML</button>
-      </div>
+
+    </div>
       <div id="status" style="margin-top: 6px;"></div>
     </div>
     <div id="cesiumContainer"></div>
     <script>
+
       class CesiumLayerPanel {
         /**
          * @param {Cesium.Viewer} viewer
@@ -609,6 +612,7 @@
 
       document.getElementById("loadButton").addEventListener("click", loadBuildings);
       document.getElementById("captureButton").addEventListener("click", capturePng);
+
       document.getElementById("downloadCombinedButton").addEventListener("click", async () => {
         const statusEl = document.getElementById("status");
         statusEl.textContent = "Preparing CZML export...";
@@ -621,6 +625,7 @@
           statusEl.style.color = "#ff6";
         }
       });
+
     </script>
   </body>
 </html>
