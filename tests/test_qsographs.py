@@ -1,8 +1,18 @@
 # test_sphere_path.py
 import math
+import sys
+from pathlib import Path
+
 import pytest
 
-from qsographs import great_circle_points, filter_redundant
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+try:
+    from qsographs import great_circle_points, filter_redundant
+except ModuleNotFoundError as exc:  # pragma: no cover - dependency guard
+    pytest.skip(f"Optional dependency missing: {exc}", allow_module_level=True)
 
 # --- great_circle_points tests ---------------------------------------------
 

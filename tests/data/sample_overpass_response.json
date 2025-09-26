@@ -1,0 +1,66 @@
+{
+  "version": 0.6,
+  "generator": "Offline Fixture",
+  "osm3s": {
+    "timestamp_osm_base": "2024-01-01T00:00:00Z",
+    "copyright": "Fixture data for tests"
+  },
+  "elements": [
+    {"type": "node", "id": 1001, "lat": 37.7955, "lon": -122.3999},
+    {"type": "node", "id": 1002, "lat": 37.7955, "lon": -122.3992},
+    {"type": "node", "id": 1003, "lat": 37.7960, "lon": -122.3992},
+    {"type": "node", "id": 1004, "lat": 37.7960, "lon": -122.3999},
+    {"type": "node", "id": 1005, "lat": 37.7950, "lon": -122.3985},
+    {"type": "node", "id": 1006, "lat": 37.7950, "lon": -122.3979},
+    {"type": "node", "id": 1007, "lat": 37.7954, "lon": -122.3979},
+    {"type": "node", "id": 1008, "lat": 37.7954, "lon": -122.3985},
+    {"type": "node", "id": 1009, "lat": 37.7958, "lon": -122.3988},
+    {"type": "node", "id": 1010, "lat": 37.7958, "lon": -122.3981},
+    {"type": "node", "id": 1011, "lat": 37.7963, "lon": -122.3981},
+    {"type": "node", "id": 1012, "lat": 37.7963, "lon": -122.3988},
+    {
+      "type": "way",
+      "id": 2001,
+      "nodes": [1001, 1002, 1003, 1004, 1001],
+      "tags": {
+        "building": "yes",
+        "height": "18",
+        "addr:housenumber": "100",
+        "addr:street": "Market St",
+        "addr:city": "San Francisco",
+        "addr:state": "CA",
+        "addr:postcode": "94105",
+        "name": "Fixture Tower"
+      }
+    },
+    {
+      "type": "way",
+      "id": 2002,
+      "nodes": [1005, 1006, 1007, 1008, 1005],
+      "tags": {
+        "building": "yes",
+        "building:levels": "5",
+        "addr:housenumber": "150",
+        "addr:street": "Fremont St",
+        "addr:city": "San Francisco",
+        "addr:state": "CA",
+        "addr:postcode": "94105"
+      }
+    },
+    {
+      "type": "way",
+      "id": 2003,
+      "nodes": [1009, 1010, 1011, 1012, 1009],
+      "tags": {
+        "building": "yes",
+        "height": "24",
+        "addr:housenumber": "200",
+        "addr:street": "Beale St",
+        "addr:city": "San Francisco",
+        "addr:state": "CA",
+        "addr:postcode": "94105",
+        "name": "Fixture Offices"
+      }
+    }
+  ]
+}
