@@ -540,7 +540,7 @@ getVisibleSources() {
 
 // Set your Cesium Ion access token.
           Cesium.Ion.defaultAccessToken =
-            'set your Cesium Ion access token';
+            'set your tokken';
           var qsoUrl = "";
           var newHeight = 22;
           // Initialize the Cesium Viewer.
@@ -740,7 +740,7 @@ ORDER BY timestamp ASC;
           var sphere1;
           var sphere2;
           var sphere3;
-          var wedge1, wwedge2, wedge3;
+          var wedge1, wwedge2, wedge3, mb_wedge_1, mb_wedge_2, mb_wedge_3;
 
           // ------------------------------
           // Methods to compute min/max values
@@ -1217,6 +1217,22 @@ function attachDataSourceVisibilityPanel(viewer, opts = {}) {
               viewer.dataSources.add(wedge3);
               //updateLegends();
             });
+            Cesium.CzmlDataSource.load("field_shell_250m_az315to100_elev0to90.czml").then(function (ds) {
+              mb_wedge_1 = ds;
+              viewer.dataSources.add(mb_wedge_1);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("field_shell_500m_az315to100_elev0to90.czml").then(function (ds) {
+              mb_wedge_2 = ds;
+              viewer.dataSources.add(mb_wedge_2);
+              //updateLegends();
+            });
+            Cesium.CzmlDataSource.load("field_shell_1000m_az315to100_elev0to90.czml").then(function (ds) {
+              mb_wedge_3 = ds;
+              viewer.dataSources.add(mb_wedge_3);
+              //updateLegends();
+            });
+            
 //Cesium.CzmlDataSource.load('one_maritime_plaza_outline.czml').then(ds => {
 //  viewer.dataSources.add(ds);
 //  viewer.zoomTo(ds);
@@ -1360,7 +1376,7 @@ document.getElementById("updateEle").addEventListener("click", function () {
     if (!entities || !entities.length) return;
     console.log("source " + srcCnt);
     srcCnt++;
-    entities.forEach((entity) => {
+    entities.forEach((entity) => {  
       //original F2 start adjustment
       if (
         (entity?.id?.includes("f2") &&
@@ -1426,7 +1442,7 @@ document.getElementById("updateEle").addEventListener("click", function () {
 
         // Preserve your existing globals/flags behavior
         if (typeof fndFileHeight !== "undefined" && fndFileHeight === 0) {
-          window.fileHeight = oldCarto.height;
+          window.fileHeight = oldCartop.height;
           window.fndFileHeight = 1;
         }
 
@@ -1686,6 +1702,10 @@ handler.setInputAction(function (click) {
     document.getElementById("maxLat").value = maxLat.toFixed(4);
     document.getElementById("minLng").value = minLng.toFixed(4);
     document.getElementById("maxLng").value = maxLng.toFixed(4);
+
+    //output the fields to the console
+    console.log(minLat + "," + minLng);
+    console.log(maxLat + "," + maxLng);
     
     // Trigger the update button click.
     document.getElementById("updateBtn").click();
