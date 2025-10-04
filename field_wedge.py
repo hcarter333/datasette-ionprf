@@ -164,7 +164,7 @@ def sin_theta_from(seg_xyz, obs):
     rhat = rv / (R[:,None] + 1e-12)
     cosT = np.abs(rhat @ ez)             # |cos(theta)| about the z-axis
     return np.sqrt(np.maximum(0.0, 1.0 - cosT**2)), np.maximum(R, 0.1)
-    
+
 # Perpendicular (⊥) and parallel (∥) Fresnel reflection coeffs
 def fresnel_gamma_perp(theta_i, eps_r_complex):
     sin_t = np.sin(theta_i); cos_t = np.cos(theta_i) + 1e-12
@@ -353,19 +353,30 @@ def field_at_points_batched(obs_xyz, batch=10000):
         i1 = min(N, i0+batch); obs = obs_xyz[i0:i1]
         Et = np.zeros(obs.shape[0], dtype=complex)
         # Direct
+        # ---- Direct field (with element pattern) ----
         for (sx,sy,sz), w in zip(TX_segs, TX_I):
-            R = np.sqrt(np.sum((obs - np.array([sx,sy,sz]))**2, axis=1)); R = np.maximum(R, 0.1)
-            Et += w * np.exp(-1j*k*R)/R
-        # ---- NEW: infinite flat ground reflection (image method + Fresnel Γ⊥) ----
+            sinT, R = sin_theta_from(np.array([sx,sy,sz])[None,:], obs)
+            Et += w * sinT * np.exp(-1j*k*R)/R
+        
+        # ---- Flat ground image (if enabled) ----
         if INCLUDE.get("flat_ground", False):
-            # For each image segment, compute ray to observer
+            n = np.array([0.0, 0.0, 1.0])                 # plane normal (horizontal ground)
             for (ix,iy,iz), w in zip(TX_img_segs, TX_I):
-                rvec = obs - np.array([ix,iy,iz])                 # vector from image to obs
-                Rimg = np.sqrt(np.sum(rvec**2, axis=1)); Rimg = np.maximum(Rimg, 0.1)
-                uz   = rvec[:,2] / Rimg                           # direction cosine wrt +z (plane normal)
-                theta_i = np.arccos(np.clip(np.abs(uz), 0.0, 1.0)) # incidence angle from normal
-                Gamma = fresnel_gamma_perp(theta_i, eps_r_ground_complex)
-                Et += w * Gamma * np.exp(-1j*k*Rimg)/Rimg
+                rv   = obs - np.array([ix,iy,iz])
+                Rimg = np.linalg.norm(rv, axis=1); Rimg = np.maximum(Rimg, 0.1)
+                rhat = rv / (Rimg[:,None] + 1e-12)
+        
+                # element factor for the image (also vertical)
+                sinT_img = np.sqrt(np.maximum(0.0, 1.0 - (np.abs(rhat @ ez))**2))
+        
+                # incidence angle for Fresnel Γ⊥ (angle from plane normal)
+                cos_theta_i = np.clip(np.abs(rhat @ n), 0.0, 1.0)
+                theta_i     = np.arccos(cos_theta_i)
+                Gamma       = fresnel_gamma_perp(theta_i, eps_r_ground_complex)
+        
+                Et += w * Gamma * sinT_img * np.exp(-1j*k*Rimg)/Rimg
+
+
         # Scatterers
         if INCLUDE["north"]:
             Et = add_scatterers(Et, obs, north_SE_corner_xyz,  A_corner_per, is_Ein=False, wedge_weight=True)
