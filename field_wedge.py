@@ -2,8 +2,10 @@
 # at radii 250 m, 500 m, and 1000 m, using the current modeling geometry (TX, North building, Alcoa wall,
 # short roof edge) plus any additional buildings supplied in /mnt/data/field_wedge_additional_buildings.czml.
 
-import json, math, numpy as np
+import json, math, numpy as np, urllib.request
 from pathlib import Path
+
+INCLUDE = dict(north=False, alcoa=False, short_roof=False, bleachers=False, flat_ground=True)
 
 # ---------- Recreate the solver context (compact but consistent with earlier runs) ----------
 R_earth = 6371000.0
@@ -18,17 +20,32 @@ def xy_to_ll(lat0, lon0, x, y):
     lon = lon0 + math.degrees(x / (R_earth * math.cos(lat0r)))
     return float(lat), float(lon)
 
-TX_lat = 37.79585318435206; TX_lon = -122.3999456223109
+#TX_lat = 37.79585318435206; TX_lon = -122.3999456223109 #Alcoa
+TX_lat = 37.7251353308826
+TX_lon = -122.45014631980361  #CCSF
 c = 299_792_458.0; f = 14.0574e6; lam = c/f; k = 2*np.pi/lam
-Lq = lam/4.0; h_roof = 8.9; h_base = h_roof + 0.3048; h_top = h_base + Lq
+Lq = lam/4.0; h_roof = 0.0; h_base = h_roof + 0.3048; h_top = h_base + Lq
+
+# --- Ground plane and material (horizontal plane) ---
+ground_z = 0.0                            # plane z = constant (meters), your code already uses h_roof=0, h_base≈0.305
+GROUND_EPS_R = 12.0                        # relative permittivity (typical soil 5–15)
+GROUND_SIGMA = 0.01                        # conductivity in S/m (0.001–0.05 common)
+eps0 = 8.854e-12
+omega = 2*np.pi*f
+eps_r_ground_complex = GROUND_EPS_R - 1j*GROUND_SIGMA/(omega*eps0)
+
+
 
 def tx_segments(nseg=19):
     z = np.linspace(h_base, h_top, nseg)
     I = np.sin(k*(h_top - z)); I = I/np.sum(np.abs(I))
     return np.stack([np.zeros_like(z), np.zeros_like(z), z], axis=-1), I
 TX_segs, TX_I = tx_segments(19)
+TX_img_segs = TX_segs.copy()
+TX_img_segs[:, 2] = 2.0*ground_z - TX_img_segs[:, 2]
 
 def ll2xy(lat, lon): return ll_to_xy(TX_lat, TX_lon, lat, lon)
+
 
 # North 67 m building
 SW_south = (37.79599248586773, -122.40024848039079)
@@ -68,7 +85,7 @@ h_roof_edge = h_roof + 4.45
 short_roof_edge_xyz = np.vstack([xs_edge, np.full_like(xs_edge, y_edge), np.full_like(xs_edge, h_roof_edge)]).T
 
 # Additional buildings (from supplied CZML)
-czml_path = Path("field_wedge_additional_buildings.czml")
+czml_path = Path("ccsf_additional_buildings.czml")
 extra_wall_xyz = np.zeros((0,3)); extra_top_edge_xyz = np.zeros((0,3)); extra_corner_xyz = np.zeros((0,3))
 if czml_path.exists():
     doc = json.load(open(czml_path, "r"))
@@ -138,6 +155,133 @@ def tx_incident_to_pts(pts_xyz):
         R = np.sqrt(np.sum((pts_xyz - np.array([sx,sy,sz]))**2, axis=1)); R = np.maximum(R, 0.1)
         Ein += w * np.exp(-1j*k*R)/R
     return Ein
+
+ez = np.array([0.0, 0.0, 1.0])  # antenna axis
+
+def sin_theta_from(seg_xyz, obs):
+    rv   = obs - seg_xyz                 # vector segment -> observer
+    R    = np.linalg.norm(rv, axis=1)
+    rhat = rv / (R[:,None] + 1e-12)
+    cosT = np.abs(rhat @ ez)             # |cos(theta)| about the z-axis
+    return np.sqrt(np.maximum(0.0, 1.0 - cosT**2)), np.maximum(R, 0.1)
+    
+# Perpendicular (⊥) and parallel (∥) Fresnel reflection coeffs
+def fresnel_gamma_perp(theta_i, eps_r_complex):
+    sin_t = np.sin(theta_i); cos_t = np.cos(theta_i) + 1e-12
+    root = np.sqrt(eps_r_complex - sin_t**2)
+    return (cos_t - root) / (cos_t + root)
+    
+
+
+if INCLUDE["bleachers"]:
+    # ====== NEW: bring in elevation-driven bleacher & sloping-ground patches ======
+    # Requirements: /mnt/data/czml_elev_fetch.py and /mnt/data/bleacher_patch_from_elev.py
+    # The fetcher will:
+    #   • read a CZML of polylines, skip ids that contain "f2"
+    #   • sample the first maxFeet along each polyline
+    #   • call USGS EPQS (feet) and return elevation packets
+    #   • fit planes for (inside bleacher polygon) and (outside background ground)
+    #   • return ENU point clouds wrt TX: x_east,y_north,z_up  [meters]
+    
+    
+    # ---- 1) define inputs ----
+    # (a) CZML with the polylines you want to sample for elevation
+    paths_czml = "./qso_elev.czml"   # <<— set this to your file with non-"f2" polylines
+    
+    # (b) bleacher polygon (lat,lon) — order CW or CCW; four corners is fine
+    BLEACHER_POLY_LATLON = [
+        (37.725248486078605, -122.44917105079513),
+        (37.72524742362892, -122.44933088645813),
+        (37.72617867285204, -122.44933990648872),
+        (37.72618127312993, -122.44917837709382),
+    ]
+    
+    # (c) how far & how dense to sample along each path
+    EPQS_MAX_FEET = 600.0
+    EPQS_COUNT    = 100
+    
+    # ---- 2) fetch & build patches ----
+    try:
+        from czml_elev_fetch import build_patches_from_elev
+    except Exception as e:
+        raise RuntimeError("czml_elev_fetch.py must be on PYTHONPATH (or next to this script).") from e
+    
+    _bleach = build_patches_from_elev(
+        czml_path=paths_czml,
+        tx_lat=TX_lat, tx_lon=TX_lon,
+        bleacher_corners_latlon=BLEACHER_POLY_LATLON,
+        maxFeet=EPQS_MAX_FEET, count=EPQS_COUNT,
+        out_prefix=None,         # set a string to also save .npy/.csv
+        feet_to_m=True
+    )
+    
+    bleacher_xyz = _bleach["meta"]["bleacher_xyz"]     # ENU meters (N×3)
+    ground_xyz   = _bleach["meta"]["ground_xyz"]       # ENU meters (M×3)
+    
+    # Plane fits z = a x + b y + c (meters) for local surface normals
+    bleacher_plane = _bleach["meta"]["bleacher_plane"]  # (a,b,c)
+    ground_plane   = _bleach["meta"]["ground_plane"]    # (a,b,c)
+    
+    # ---- 3) incident field at those points (from your short dipole model) ----
+    Ein_bleacher = tx_incident_to_pts(bleacher_xyz)
+    Ein_ground   = tx_incident_to_pts(ground_xyz)
+    
+    # ---- 4) Fresnel reflection factors for sloped surfaces ----
+    # For a plane z = a x + b y + c, an (unnormalized) upward normal is n0 = [-a,-b,1]
+    def normal_from_plane(plane_abc):
+        a,b,_ = plane_abc
+        n = np.array([-a, -b, 1.0], dtype=float)
+        return n / (np.linalg.norm(n) + 1e-12)
+    
+    n_bleacher = normal_from_plane(bleacher_plane)
+    n_ground   = normal_from_plane(ground_plane)
+    
+    def fresnel_gamma_parallel(theta_i, eps_r_complex):
+        sin_t = np.sin(theta_i); cos_t = np.cos(theta_i) + 1e-12
+        root = np.sqrt(eps_r_complex - sin_t**2)
+        return (eps_r_complex*cos_t - root) / (eps_r_complex*cos_t + root)
+    
+    # Compute incidence angles (TX → patch) vs each plane’s normal
+    def incidence_angles_to_plane(pts_xyz, plane_normal):
+        if pts_xyz.size == 0:
+            return np.zeros(0)
+        # direction from patch point to TX feedpoint (your h_base)
+        v = np.array([0.0, 0.0, h_base])[None,:] - pts_xyz
+        u = v / (np.linalg.norm(v, axis=1)[:,None] + 1e-12)
+        cos_theta = np.abs(u @ plane_normal)  # |u·n|
+        cos_theta = np.clip(cos_theta, 0, 1)
+        return np.arccos(cos_theta)
+    
+    # Materials: metal bleachers (high-σ), soil for background ground
+    eps0 = 8.854e-12; omega = 2*np.pi*f
+    # “Metal” ≈ very good conductor → |Γ|≈1; keep a slight loss so it’s well-behaved
+    epsr_bleacher = 1.0 - 1j*(3.0e6)/(omega*eps0)   # very high σ proxy
+    epsr_ground   = 12.0 - 1j*(0.01)/(omega*eps0)   # soil
+    
+    theta_bleacher = incidence_angles_to_plane(bleacher_xyz, n_bleacher)
+    theta_ground   = incidence_angles_to_plane(ground_xyz,   n_ground)
+    
+    # For vertical-dipole illumination on a (roughly) horizontal surface, use Γ⊥ as the better proxy.
+    Gamma_bleacher = fresnel_gamma_perp(theta_bleacher, epsr_bleacher)
+    Gamma_ground   = fresnel_gamma_perp(theta_ground,   epsr_ground)
+    
+    # Optional global scaling so dense clouds don't overwhelm the sum
+    A_bleacher_total_dB = -12.0
+    A_ground_total_dB   = -18.0
+    def per_point_scale(total_dB, npts):
+        return (10**(total_dB/20.0))/max(1, npts)
+    
+    A_bleacher_per = per_point_scale(A_bleacher_total_dB, bleacher_xyz.shape[0])
+    A_ground_per   = per_point_scale(A_ground_total_dB,   ground_xyz.shape[0])
+    
+    # Pre-multiply like other “Ein-based” scatterers
+    Ein_bleacher_scaled = A_bleacher_per * Gamma_bleacher * Ein_bleacher
+    Ein_ground_scaled   = A_ground_per   * Gamma_ground   * Ein_ground
+    # ====== end NEW block ======
+
+
+
+
 
 def wall_reflection_terms(wall_xyz):
     if wall_xyz.size == 0: return np.zeros(0, dtype=complex)
@@ -212,27 +356,58 @@ def field_at_points_batched(obs_xyz, batch=10000):
         for (sx,sy,sz), w in zip(TX_segs, TX_I):
             R = np.sqrt(np.sum((obs - np.array([sx,sy,sz]))**2, axis=1)); R = np.maximum(R, 0.1)
             Et += w * np.exp(-1j*k*R)/R
+        # ---- NEW: infinite flat ground reflection (image method + Fresnel Γ⊥) ----
+        if INCLUDE.get("flat_ground", False):
+            # For each image segment, compute ray to observer
+            for (ix,iy,iz), w in zip(TX_img_segs, TX_I):
+                rvec = obs - np.array([ix,iy,iz])                 # vector from image to obs
+                Rimg = np.sqrt(np.sum(rvec**2, axis=1)); Rimg = np.maximum(Rimg, 0.1)
+                uz   = rvec[:,2] / Rimg                           # direction cosine wrt +z (plane normal)
+                theta_i = np.arccos(np.clip(np.abs(uz), 0.0, 1.0)) # incidence angle from normal
+                Gamma = fresnel_gamma_perp(theta_i, eps_r_ground_complex)
+                Et += w * Gamma * np.exp(-1j*k*Rimg)/Rimg
         # Scatterers
-        Et = add_scatterers(Et, obs, north_SE_corner_xyz,  A_corner_per, is_Ein=False, wedge_weight=True)
-        Et = add_scatterers(Et, obs, north_south_top_xyz, A_topS_per * Ein_topS, is_Ein=True)
-        Et = add_scatterers(Et, obs, north_east_top_xyz,  A_topE_per * Ein_topE, is_Ein=True)
-        Et = add_scatterers(Et, obs, north_balc_south_xyz, A_bS_per * Ein_bS, is_Ein=True)
-        Et = add_scatterers(Et, obs, north_balc_east_xyz,  A_bE_per * Ein_bE, is_Ein=True)
-        Et = add_scatterers(Et, obs, short_roof_edge_xyz, A_roof_per, is_Ein=False)
-        Et = add_scatterers(Et, obs, OP_wall_xyz, Gamma_OP * Ein_OP, is_Ein=True)
-        Et = add_scatterers(Et, obs, extra_wall_xyz, Gamma_extra * Ein_extra_walls, is_Ein=True)
-        Et = add_scatterers(Et, obs, extra_top_edge_xyz, A_top_extra_per * Ein_extra_tops, is_Ein=True)
-        Et = add_scatterers(Et, obs, extra_corner_xyz, A_corner_extra_per * Ein_extra_corn, is_Ein=True)
+        if INCLUDE["north"]:
+            Et = add_scatterers(Et, obs, north_SE_corner_xyz,  A_corner_per, is_Ein=False, wedge_weight=True)
+            Et = add_scatterers(Et, obs, north_south_top_xyz, A_topS_per * Ein_topS, is_Ein=True)
+            Et = add_scatterers(Et, obs, north_east_top_xyz,  A_topE_per * Ein_topE, is_Ein=True)
+            Et = add_scatterers(Et, obs, north_balc_south_xyz, A_bS_per * Ein_bS, is_Ein=True)
+            Et = add_scatterers(Et, obs, north_balc_east_xyz,  A_bE_per * Ein_bE, is_Ein=True)
+
+        if INCLUDE["short_roof"]:
+            Et = add_scatterers(Et, obs, short_roof_edge_xyz, A_roof_per, is_Ein=False)
+        if INCLUDE["alcoa"]:
+            Et = add_scatterers(Et, obs, OP_wall_xyz, Gamma_OP * Ein_OP, is_Ein=True)
+        #Et = add_scatterers(Et, obs, extra_wall_xyz, Gamma_extra * Ein_extra_walls, is_Ein=True)
+        #Et = add_scatterers(Et, obs, extra_top_edge_xyz, A_top_extra_per * Ein_extra_tops, is_Ein=True)
+        #Et = add_scatterers(Et, obs, extra_corner_xyz, A_corner_extra_per * Ein_extra_corn, is_Ein=True)
+        # --- NEW: bleacher and sloping ground patches (toggle with INCLUDE["bleachers"]) ---
+        if INCLUDE["bleachers"]:
+            print("Adding bleachers")
+            Et = add_scatterers(Et, obs, bleacher_xyz, Ein_bleacher_scaled, is_Ein=True)
+            Et = add_scatterers(Et, obs, ground_xyz,   Ein_ground_scaled,   is_Ein=True)
+            print("Done with bleachers")
+
+            print("\n[bleacher debug]")
+            print("bleacher_xyz shape:", bleacher_xyz.shape, " ground_xyz shape:", ground_xyz.shape)
+            print("inside/outside counts (if available):",
+                getattr(_bleach, "get", lambda *_: {})("meta", {}).get("inside_count", "n/a"),
+                getattr(_bleach, "get", lambda *_: {})("meta", {}).get("outside_count", "n/a"))
+            print("A_bleacher_per =", A_bleacher_per, " |Gamma_bleacher| median =", np.median(np.abs(Gamma_bleacher)) if len(Gamma_bleacher) else "n/a")
+            print("|Ein_bleacher| median:", np.median(np.abs(Ein_bleacher)) if len(Ein_bleacher) else "n/a")
+
+
+
         Etot[i0:i1] = Et
     return Etot
 
 # ---------- Build the shells ----------
-def build_shell_czml(radius_m, azi_start_deg=315.0, azi_end_deg=100.0, elev_max_deg=90.0,
+def build_shell_czml(radius_m, azi_start_deg=30.0, azi_end_deg=130.0, elev_max_deg=90.0,
                      d_azi=2.0, d_elev=3.0, pixel=6):
     # Azimuth set (wrap 315→360 and 0→100)
-    az1 = np.arange(azi_start_deg, 360.0, d_azi)
-    az2 = np.arange(0.0, azi_end_deg + 1e-6, d_azi)
-    az_all = np.concatenate([az1, az2])
+    #az1 = np.arange(azi_start_deg, 360.0, d_azi)
+    az2 = np.arange(azi_start_deg, azi_end_deg + 1e-6, d_azi)
+    az_all = np.concatenate([az2])
     el_all = np.arange(0.0, elev_max_deg + 1e-6, d_elev)
 
     # Build observation points on a spherical shell centered at TX
@@ -260,10 +435,11 @@ def build_shell_czml(radius_m, azi_start_deg=315.0, azi_end_deg=100.0, elev_max_
         import matplotlib.cm as cm
         r,g,b, a = cm.get_cmap("viridis")(t)
         return [int(r*255), int(g*255), int(b*255), 220]
-
+    #shel_labeel = "m (az 315→100°, elev 0→{int(elev_max_deg)}°)"
+    shell_label = "iso_gnd"
     czml = [{
         "id":"document",
-        "name": f"3D shell {int(radius_m)} m (az 315→100°, elev 0→{int(elev_max_deg)}°)",
+        "name": f"3D shell {int(radius_m)} {shell_label}",
         "version":"1.0"
     },{
         "id":"TX",
@@ -279,12 +455,13 @@ def build_shell_czml(radius_m, azi_start_deg=315.0, azi_end_deg=100.0, elev_max_
             lat, lon = xy_to_ll(TX_lat, TX_lon, x, y)
             db = float(Pr_dB[ie, ia])
             czml.append({
-                "id": f"rel_dB_{db}_{int(radius_m)}",
+                "id": f"rel_dB_{db}_{int(radius_m)}_e{ie:03d}_a{ia:03d}",
                 "position": {"cartographicDegrees": [lon, lat, z]},
                 "point": {"color":{"rgba": map_color_db(db)},"pixelSize": pixel}
             })
-
-    out_path = f"field_shell_{int(radius_m)}m_az315to100_elev0to90.czml"
+    #flabel = "m_az315to100_elev0to90.czml"
+    flabel = "iso_gnd.czml"
+    out_path = f"ccsf_field_shell_{int(radius_m)}{flabel}"
     with open(out_path, "w") as f: json.dump(czml, f)
     return out_path
 
