@@ -26,3 +26,5 @@
 ##Requires##
 numpy 
 netCDF4 
+datasette-haversine 
+
