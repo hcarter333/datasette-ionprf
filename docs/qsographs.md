@@ -21,3 +21,8 @@
 | `test_boundary_crossing_inclusive`        | tests exact-boundary behavior at multiples of 5°/2.5°. |
 | `test_negative_coordinates`               | ensures negative lats/lons floor properly.             |
 | `test_combined_pipeline`                  | integration test: no two outputs share the same cell.  | 
+
+
+##Requires##
+numpy 
+netCDF4 
