@@ -27,4 +27,5 @@
 numpy 
 netCDF4 
 datasette-haversine 
+matplotlib
 
