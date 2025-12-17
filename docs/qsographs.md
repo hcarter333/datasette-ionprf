@@ -23,9 +23,9 @@
 | `test_combined_pipeline`                  | integration test: no two outputs share the same cell.  | 
 
 
-##Requires##
-numpy 
-netCDF4 
-datasette-haversine 
-matplotlib
+## Requires 
+numpy  
+netCDF4  
+datasette-haversine  
+matplotlib  
 
