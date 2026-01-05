@@ -19,7 +19,6 @@ WITH qso AS (
          haversine(tx_lat, tx_lng, rx_lat, rx_lng) as length
   FROM [rm_toucans_slice].rm_rnb_history_pres
   WHERE timestamp BETWEEN '{start}' AND '{end}'
-    AND dB > 100
 ),
 f2 AS (
   SELECT *
@@ -74,6 +73,7 @@ def fetch_csv(start: str, end: str) -> list[tuple[str, str, str]]:
         "sql=" + urllib.parse.quote_plus(sql) +
         "&_size=max"
     )
+    print(url)
     resp = requests.get(url)
     resp.raise_for_status()
     lines = resp.text.splitlines()

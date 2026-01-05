@@ -31,6 +31,75 @@ def safe_ts(ts: str) -> str:
 
 def grid_lon(lon): return 2.5 + 5.0 * round((lon - 2.5) / 5.0)
 def grid_lat(lat): return -88.75 + 2.5 * round((lat + 88.75) / 2.5)
+# ---------------------------------------------------------------------------
+# Fixed-y axis support (computed over ALL glotec timestamps, per path)
+# ---------------------------------------------------------------------------
+
+_FIXED_Y_CACHE = {}  # (datasource, lon_tx, lat_tx, lon_rx, lat_rx) -> {"fof2":(lo,hi), "hmf2":(lo,hi)}
+
+def _path_cells(lon_tx, lat_tx, lon_rx, lat_rx):
+    samples = list(collapse_cells(great_circle(lat_tx, lon_tx, lat_rx, lon_rx)))
+    return [(lon_c, lat_c) for lon_c, lat_c, _f in samples]
+
+def _minmax_over_all_timestamps(var, lon_tx, lat_tx, lon_rx, lat_rx, datasource):
+    """
+    Compute min/max for `var` over ALL timestamps in glotec, restricted to
+    grid cells along this one great-circle path.
+    """
+    cells = _path_cells(lon_tx, lat_tx, lon_rx, lat_rx)
+    if not cells:
+        return (None, None)
+
+    ts_list = fetch_glotec_timestamps(datasource)
+    if not ts_list:
+        return (None, None)
+
+    vmin = vmax = None
+    seen = set()
+    for ts_exact in ts_list:
+        ts_round = round_to_glotec(ts_exact)
+        if ts_round in seen:
+            continue
+        seen.add(ts_round)
+
+        data = fetch_glotec_map(ts_round, datasource)
+        if not data:
+            continue
+
+        for cell in cells:
+            v = data.get(cell, {}).get(var)
+            if v is None:
+                continue
+            if vmin is None or v < vmin:
+                vmin = v
+            if vmax is None or v > vmax:
+                vmax = v
+
+    if vmin is None or vmax is None:
+        return (None, None)
+
+    vmin = float(vmin); vmax = float(vmax)
+    if var == "fof2":
+        vmin = max(0.0, vmin)
+
+    span = vmax - vmin
+    pad = span * 0.05 if span > 0 else (0.2 if var == "fof2" else 1.0)
+    return (vmin - pad, vmax + pad)
+
+def _fixed_y_ranges_for_path(lon_tx, lat_tx, lon_rx, lat_rx, datasource):
+    """
+    Return {"fof2": (lo,hi), "hmf2": (lo,hi)} for this path, cached.
+    """
+    key = (datasource, float(lon_tx), float(lat_tx), float(lon_rx), float(lat_rx))
+    if key in _FIXED_Y_CACHE:
+        return _FIXED_Y_CACHE[key]
+
+    y_fof2 = _minmax_over_all_timestamps("fof2", lon_tx, lat_tx, lon_rx, lat_rx, datasource)
+    y_hmf2 = _minmax_over_all_timestamps("hmf2", lon_tx, lat_tx, lon_rx, lat_rx, datasource)
+
+    ylims = {"fof2": y_fof2, "hmf2": y_hmf2}
+    _FIXED_Y_CACHE[key] = ylims
+    return ylims
 
 # ---------------------------------------------------------------------------
 # Fetch one time-slice of GloTEC
@@ -50,6 +119,118 @@ def fetch_glotec_map(ts, base="http://127.0.0.1:8001"):
     for lon, lat, hmf2, fof2 in rows:
         data[(grid_lon(lon), grid_lat(lat))] = {"hmf2": hmf2, "fof2": fof2}
     return data
+
+def compute_timeline_ylims(lon_tx, lat_tx, lon_rx, lat_rx, ts_list,
+                           datasource="http://127.0.0.1:8001",
+                           pad_frac=0.05):
+    """
+    Compute y-axis limits for fof2 & hmf2 over a specific timestamp window,
+    restricted to the grid-cells along this one great-circle path.
+
+    Returns: {"fof2": (ymin, ymax), "hmf2": (ymin, ymax)}
+    """
+    samples = list(collapse_cells(great_circle(lat_tx, lon_tx, lat_rx, lon_rx)))
+    if not samples:
+        return {}
+
+    # Only need lon/lat cells
+    cells = [(lon_c, lat_c) for lon_c, lat_c, _f in samples]
+
+    mins = {"fof2": None, "hmf2": None}
+    maxs = {"fof2": None, "hmf2": None}
+
+    # Use rounded timestamps (same as plotting)
+    seen = set()
+    for ts_exact in ts_list:
+        ts_round = round_to_glotec(ts_exact)
+        if ts_round in seen:
+            continue
+        seen.add(ts_round)
+
+        data = fetch_glotec_map(ts_round, datasource)
+        if not data:
+            continue
+
+        for var in ("fof2", "hmf2"):
+            for cell in cells:
+                v = data.get(cell, {}).get(var)
+                if v is None:
+                    continue
+                if mins[var] is None or v < mins[var]:
+                    mins[var] = v
+                if maxs[var] is None or v > maxs[var]:
+                    maxs[var] = v
+
+    ylims = {}
+    for var in ("fof2", "hmf2"):
+        lo, hi = mins[var], maxs[var]
+        if lo is None or hi is None:
+            continue
+        lo = float(lo); hi = float(hi)
+        if var == "fof2":
+            lo = max(0.0, lo)  # fof2 shouldn't be negative
+        span = hi - lo
+        pad = (span * pad_frac) if span > 0 else (1.0 if var == "hmf2" else 0.2)
+        ylims[var] = (lo - pad, hi + pad)
+
+    return ylims
+
+
+
+# ---------------------------------------------------------------------------
+# Optional: fixed y-axis ranges (global per datasource + var)
+# ---------------------------------------------------------------------------
+
+_YAXIS_CACHE = {}  # (datasource, var) -> (ymin, ymax)
+
+def fetch_glotec_y_range(var: str, base="http://127.0.0.1:8001"):
+    """
+    Query the glotec table for global min/max for a variable.
+    Cached so we only hit Datasette once per var per datasource.
+
+    var: "fof2" or "hmf2"
+    """
+    key = (base, var)
+    if key in _YAXIS_CACHE:
+        return _YAXIS_CACHE[key]
+
+    if var == "fof2":
+        expr = "(sqrt(NmF2/.0124))/1000.0"
+        sql = (
+            f"select min({expr}) as ymin, max({expr}) as ymax "
+            "from glotec where NmF2 > 0"
+        )
+    elif var == "hmf2":
+        sql = (
+            "select min(hmF2) as ymin, max(hmF2) as ymax "
+            "from glotec where hmF2 is not null"
+        )
+    else:
+        raise ValueError("var must be 'fof2' or 'hmf2'")
+
+    url = f"{base}/glotec_slice.json?sql=" + urllib.parse.quote(sql, safe="")
+    with urllib.request.urlopen(url) as r:
+        rows = json.load(r)["rows"]
+
+    ymin, ymax = (rows[0][0], rows[0][1]) if rows and rows[0] else (None, None)
+
+    # Defensive cleanup + small padding
+    if ymin is None or ymax is None:
+        ymin, ymax = (0.0, 1.0)
+    else:
+        ymin = float(ymin)
+        ymax = float(ymax)
+        if var == "fof2":
+            ymin = max(0.0, ymin)  # fof2 shouldn't go negative
+        pad = (ymax - ymin) * 0.05
+        if pad <= 0:
+            pad = 1.0
+        ymin -= pad
+        ymax += pad
+
+    _YAXIS_CACHE[key] = (ymin, ymax)
+    return ymin, ymax
+
 
 # ---------------------------------------------------------------------------
 # Great-circle helpers
@@ -90,7 +271,8 @@ def collapse_cells(samples):
 def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
              uid, call_sign,
              out_dir="plots",
-             datasource="http://127.0.0.1:8001"):
+             datasource="http://127.0.0.1:8001",
+             fixedyaxis: bool = False):
     """
     Produce BOTH fof2 and hmf2 plots.
     Saves  <exactTimestamp>_<callsign>.png  in *out_dir*.
@@ -106,6 +288,11 @@ def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
     if not samples:
         print("[WARN] zero cells on path")
         return []
+
+    ylims = None
+    if fixedyaxis:
+        ylims = _fixed_y_ranges_for_path(lon_tx, lat_tx, lon_rx, lat_rx, datasource)
+
 
     # total great-circle angle
     p1 = sph2cart(math.radians(lat_tx), math.radians(lon_tx))
@@ -136,7 +323,16 @@ def plot_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
         plt.xlabel("Angle along great circle (°)")
         plt.ylabel(f"{var.upper()} (MHz)" if var=="fof2" else f"{var.upper()} (km)")
         plt.title(f"{var.upper()} vs angle • {call_sign} • {ts_exact}")
-        plt.grid(True); plt.tight_layout(); plt.savefig(fpath, dpi=150); plt.close()
+        plt.grid(True); 
+
+        if fixedyaxis and ylims:
+            lo, hi = ylims.get(var, (None, None))
+            if lo is not None and hi is not None:
+                plt.ylim(lo, hi)
+
+        plt.tight_layout()
+        plt.savefig(fpath, dpi=150)
+        plt.close()
         generated.append(str(fpath))
 
     return generated
@@ -160,6 +356,19 @@ def fetch_glotec_Nm(ts, base="http://127.0.0.1:8001"):
         # Keep your existing key style: lower-case 'hmf2', new 'nmf2'
         data[(grid_lon(lon), grid_lat(lat))] = {"hmf2": hmf2, "nmf2": nmf2}
     return data
+
+# ---------------------------------------------------------------------------
+# Get list of timestamps from glotec_slice
+# ---------------------------------------------------------------------------
+def fetch_glotec_timestamps(base="http://127.0.0.1:8001"):
+    """
+    Return sorted list of distinct timestamps from the glotec table.
+    """
+    sql = "select distinct timestamp from glotec order by timestamp"
+    url = f"{base}/glotec_slice.json?sql=" + urllib.parse.quote(sql, safe="")
+    with urllib.request.urlopen(url) as r:
+        rows = json.load(r)["rows"]
+    return [row[0] for row in rows if row and row[0]]
 
 # ---------------------------------------------------------------------------
 # Physics helpers for refractive index from NmF2
@@ -197,7 +406,8 @@ def _refractive_index_from_N(N_m3: float, f_hz: float):
 def refr_json_qso(lon_tx, lat_tx, lon_rx, lat_rx, ts_exact,
                   uid, call_sign,
                   out_dir="plots",
-                  datasource="http://127.0.0.1:8001"):
+                  datasource="http://127.0.0.1:8001",
+                  fixedyaxis: bool = False):
     """
     Build a JSON object describing refractive index n along the great-circle path
     at the F2 peak (hmF2) for the rounded GloTEC time slice.

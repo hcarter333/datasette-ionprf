@@ -641,8 +641,8 @@ def outing_glotec(csv_url):
         print("No valid QSO timestamps found.")
         sys.exit(1)
 
-    begin_dt = first_dt - timedelta(minutes=10)
-    end_dt   = last_dt + timedelta(minutes=10)
+    begin_dt = first_dt - timedelta(minutes=180)
+    end_dt   = last_dt + timedelta(minutes=180)
 
     begin_iso = begin_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso   = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
