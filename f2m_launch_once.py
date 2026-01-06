@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """
-Fetch QSO CSV (including launchangle) from Datasette, then update rm_toucans.db
-with both f2m and launchangle for each id.
+Compute launch angle/f2m from local SQLite databases and update rm_toucans.db
+and rm_toucans_slice.db with both f2m and launchangle for each id.
 """
 
 import argparse
-import requests
-import csv
+import math
 import sqlite3
-import urllib.parse
 import sys
 
 SQL_TEMPLATE = """
@@ -63,24 +61,133 @@ FROM fmint
 ORDER BY timestamp ASC;
 """
 
-def fetch_csv(start: str, end: str) -> list[tuple[str, str, str]]:
+DEG2RAD = math.pi / 180
+RAD2DEG = 180 / math.pi
+EARTH_RADIUS_KM = 6357
+
+
+def cartesian_x(latitude: float, longitude: float) -> float:
+    return math.cos(latitude * DEG2RAD) * math.cos(longitude * DEG2RAD)
+
+
+def cartesian_y(latitude: float, longitude: float) -> float:
+    return math.cos(latitude * DEG2RAD) * math.sin(longitude * DEG2RAD)
+
+
+def cartesian_z(latitude: float) -> float:
+    return math.sin(latitude * DEG2RAD)
+
+
+def spherical_lat(x: float, y: float, z: float) -> float:
+    r = math.sqrt(x * x + y * y)
+    return math.atan2(z, r) * RAD2DEG
+
+
+def spherical_lng(x: float, y: float) -> float:
+    return math.atan2(y, x) * RAD2DEG
+
+
+def midpoint_lat(f0: float, l0: float, f1: float, l1: float) -> float:
+    return partial_path_lat(f0, l0, f1, l1, 2)
+
+
+def midpoint_lng(f0: float, l0: float, f1: float, l1: float) -> float:
+    return partial_path_lng(f0, l0, f1, l1, 2)
+
+
+def partial_path_lat(f0: float, l0: float, f1: float, l1: float, parts: float) -> float:
+    x_0 = cartesian_x(f0, l0)
+    y_0 = cartesian_y(f0, l0)
+    z_0 = cartesian_z(f0)
+    x_1 = cartesian_x(f1, l1)
+    y_1 = cartesian_y(f1, l1)
+    z_1 = cartesian_z(f1)
+    x_mid = x_0 + ((x_1 - x_0) / parts)
+    y_mid = y_0 + ((y_1 - y_0) / parts)
+    z_mid = z_0 + ((z_1 - z_0) / parts)
+    return spherical_lat(x_mid, y_mid, z_mid)
+
+
+def partial_path_lng(f0: float, l0: float, f1: float, l1: float, parts: float) -> float:
+    x_0 = cartesian_x(f0, l0)
+    y_0 = cartesian_y(f0, l0)
+    z_0 = cartesian_z(f0)
+    x_1 = cartesian_x(f1, l1)
+    y_1 = cartesian_y(f1, l1)
+    z_1 = cartesian_z(f1)
+    x_mid = x_0 + ((x_1 - x_0) / parts)
+    y_mid = y_0 + ((y_1 - y_0) / parts)
+    z_mid = z_0 + ((z_1 - z_0) / parts)
+    return spherical_lng(x_mid, y_mid)
+
+
+def swept_angle(f0: float, l0: float, f1: float, l1: float) -> float:
+    tx_x = cartesian_x(f0, l0)
+    tx_y = cartesian_y(f0, l0)
+    tx_z = cartesian_z(f0)
+    rx_x = cartesian_x(f1, l1)
+    rx_y = cartesian_y(f1, l1)
+    rx_z = cartesian_z(f1)
+    cross_x = (tx_y * rx_z) - (tx_z * rx_y)
+    cross_y = (tx_z * rx_x) - (tx_x * rx_z)
+    cross_z = (tx_x * rx_y) - (tx_y * rx_x)
+    g_mag = math.sqrt(cross_x**2 + cross_y**2 + cross_z**2)
+    return math.asin(g_mag) * RAD2DEG
+
+
+def law_cosines(re: float, fmax: float, swangl: float) -> float:
+    return math.sqrt(re**2 + (re + fmax) ** 2 - 2 * re * (re + fmax) * math.cos(swangl * DEG2RAD))
+
+
+def law_sines(re: float, c_side: float, swangle: float) -> float:
+    return math.asin((re * math.sin(swangle * DEG2RAD)) / c_side) * RAD2DEG
+
+
+def launchangle(f0: float, l0: float, f1: float, l1: float, f2m: float) -> float:
+    sw = swept_angle(f0, l0, f1, l1)
+    ts = law_cosines(EARTH_RADIUS_KM, f2m, sw)
+    thdangle = law_sines(EARTH_RADIUS_KM, ts, sw)
+    return (180 - sw - thdangle) - 90
+
+
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    lat1_r = lat1 * DEG2RAD
+    lon1_r = lon1 * DEG2RAD
+    lat2_r = lat2 * DEG2RAD
+    lon2_r = lon2 * DEG2RAD
+    dlat = lat2_r - lat1_r
+    dlon = lon2_r - lon1_r
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return 6371000 * c
+
+
+def register_functions(conn: sqlite3.Connection) -> None:
+    conn.create_function("midpoint_lat", 4, midpoint_lat)
+    conn.create_function("midpoint_lng", 4, midpoint_lng)
+    conn.create_function("launchangle", 5, launchangle)
+    conn.create_function("haversine", 4, haversine)
+
+
+def fetch_records(
+    start: str,
+    end: str,
+    rm_toucans_slice_db: str,
+    glotec_slice_db: str,
+) -> list[tuple[str, str, str]]:
     """
-    Fetch the CSV from the Datasette endpoint, returning list of (id, f2m, launchangle).
+    Run the SQL query directly against SQLite databases, returning (id, f2m, launchangle).
     """
+    conn = sqlite3.connect(":memory:")
+    register_functions(conn)
+    conn.execute("ATTACH DATABASE ? AS rm_toucans_slice", (rm_toucans_slice_db,))
+    conn.execute("ATTACH DATABASE ? AS glotec_slice", (glotec_slice_db,))
     sql = SQL_TEMPLATE.format(start=start, end=end)
-    url = (
-        "http://127.0.0.1:8001/_memory.csv?"
-        "sql=" + urllib.parse.quote_plus(sql) +
-        "&_size=max"
-    )
-    print(url)
-    resp = requests.get(url)
-    resp.raise_for_status()
-    lines = resp.text.splitlines()
-    reader = csv.DictReader(lines)
+    rows = conn.execute(sql).fetchall()
+    conn.close()
     records = []
-    for row in reader:
-        records.append((row["id"], row["f2m"], row["launchangle"]))
+    for row in rows:
+        records.append((row[0], row[2], row[3]))
     return records
 
 def ensure_column(conn: sqlite3.Connection, table: str, column: str, col_type: str = "REAL"):
@@ -119,32 +226,56 @@ def update_database(db_path: str, records: list[tuple[str, str, str]], table: st
     conn.commit()
     conn.close()
 
+def update_databases(
+    start: str,
+    end: str,
+    rm_db: str,
+    rm_slice_db: str,
+    glotec_slice_db: str,
+) -> int:
+    records = fetch_records(start, end, rm_slice_db, glotec_slice_db)
+    if not records:
+        return 0
+    update_database(rm_db, records)
+    update_database(rm_slice_db, records)
+    return len(records)
+
 def main():
-    parser = argparse.ArgumentParser(description="Fetch QSO f2m & launchangle and update rm_toucans.db")
+    parser = argparse.ArgumentParser(
+        description="Fetch QSO f2m & launchangle and update rm_toucans.db and rm_toucans_slice.db"
+    )
     parser.add_argument("--start", required=True,
                         help="UTC start timestamp (e.g. 2025-04-25T21:25:00)")
     parser.add_argument("--end",   required=True,
                         help="UTC end   timestamp (e.g. 2025-04-26T00:15:00)")
-    parser.add_argument("--db",    default="rm_toucans.db",
-                        help="Path to the SQLite database file")
+    parser.add_argument("--rm-db", default="rm_toucans.db",
+                        help="Path to the rm_toucans SQLite database file")
+    parser.add_argument("--rm-slice-db", default="rm_toucans_slice.db",
+                        help="Path to the rm_toucans_slice SQLite database file")
+    parser.add_argument("--glotec-slice-db", default="glotec_slice.db",
+                        help="Path to the glotec_slice SQLite database file")
     args = parser.parse_args()
 
     try:
-        records = fetch_csv(args.start, args.end)
-    except Exception as e:
-        print(f"Error fetching CSV: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if not records:
-        print("No records returned; nothing to update.")
-        sys.exit(0)
-
-    try:
-        update_database(args.db, records)
-        print(f"Updated {len(records)} rows with f2m and launchangle in {args.db}.")
+        updated = update_databases(
+            args.start,
+            args.end,
+            args.rm_db,
+            args.rm_slice_db,
+            args.glotec_slice_db,
+        )
     except Exception as e:
         print(f"Error updating database: {e}", file=sys.stderr)
         sys.exit(1)
+
+    if not updated:
+        print("No records returned; nothing to update.")
+        sys.exit(0)
+
+    print(
+        "Updated "
+        f"{updated} rows with f2m and launchangle in {args.rm_db} and {args.rm_slice_db}."
+    )
 
 if __name__ == "__main__":
     main()
