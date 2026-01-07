@@ -33,6 +33,10 @@ It has four modes:
   6. -laglotec mode:
      - The script retrieves only the most recent glotec entry from the listing and creates a new glotec database
        containing only the records from that most recent GeoJSON file.
+  7. -outing_glotec_tw <start_timestamp> <end_timestamp> mode:
+     - The script accepts two timestamps (formatted as 2025-02-03T00:45:00Z) defining a time window.
+       It uses that time window to update the glotec database, create sliced databases, and print
+       the Cesium map link, mirroring the workflow of -outing_glotec without a URL.
 """
 
 import sys
@@ -665,6 +669,39 @@ def outing_glotec(csv_url):
     print("You can access the associated Cesium map at http://127.0.0.1:8001/assets/glotec_local3.html?minLat=-89&maxLat=89&minLng=-179&maxLng=179&startTs=" + urllib.parse.quote_plus(begin_link_iso) + "&endTs=" + urllib.parse.quote_plus(end_link_iso))
 
 
+def outing_glotec_tw(start_timestamp, end_timestamp):
+    """
+    Accepts two timestamp strings in ISO 8601 format (e.g., 2025-02-03T00:45:00Z).
+    It uses the provided timestamps as the time window and mirrors the -outing_glotec
+    workflow without downloading a QSO CSV.
+    """
+    try:
+        start_dt = datetime.strptime(start_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+        end_dt = datetime.strptime(end_timestamp, "%Y-%m-%dT%H:%M:%SZ")
+    except Exception as e:
+        print(f"Error parsing provided timestamps: {e}")
+        sys.exit(1)
+
+    if end_dt < start_dt:
+        print("Error: end timestamp must be after the start timestamp.")
+        sys.exit(1)
+
+    begin_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    begin_link_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    end_link_iso = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+
+    print("outing_glotec_tw → using time window:")
+    print(f"  begin:     {begin_iso}")
+    print(f"  end:       {end_iso}")
+
+    update_db(begin_iso, end_iso)
+
+    slice_databases(begin_iso, end_iso)
+
+    print("You can access the associated Cesium map at http://127.0.0.1:8001/assets/glotec_local3.html?minLat=-89&maxLat=89&minLng=-179&maxLng=179&startTs=" + urllib.parse.quote_plus(begin_link_iso) + "&endTs=" + urllib.parse.quote_plus(end_link_iso))
+
+
 # -------------------------
 # New function for -laglotec mode.
 def latest_glotec():
@@ -877,6 +914,17 @@ if "-outing_glotec" in sys.argv:
         print("Error: -outing_glotec requires a URL to the QSO CSV file.")
         sys.exit(1)
     outing_glotec(csv_url_arg)
+    sys.exit(0)
+
+if "-outing_glotec_tw" in sys.argv:
+    try:
+        idx = sys.argv.index("-outing_glotec_tw")
+        start_ts_arg = sys.argv[idx + 1]
+        end_ts_arg = sys.argv[idx + 2]
+    except IndexError:
+        print("Error: -outing_glotec_tw requires two timestamp arguments (e.g., 2025-02-03T00:45:00Z 2025-02-03T01:00:00Z)")
+        sys.exit(1)
+    outing_glotec_tw(start_ts_arg, end_ts_arg)
     sys.exit(0)
 
 
